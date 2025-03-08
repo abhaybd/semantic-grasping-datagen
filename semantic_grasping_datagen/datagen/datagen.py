@@ -35,7 +35,7 @@ from datagen_utils import (
     set_exit_event
 )
 from semantic_grasping_datagen.annotation import Annotation
-from utils import list_s3_files
+from semantic_grasping_datagen.utils import list_s3_files
 
 from acronym_tools import create_gripper_marker
 
@@ -119,7 +119,7 @@ def generate_floor_and_walls(scene: ss.Scene, datagen_cfg: DatagenConfig):
 
     floor_plane = create_plane(width+0.2, depth+0.2, center, (0, 0, 1))
     uv = np.array([[0,0], [1,0], [0,1], [1,1]]) * np.array([width, depth])
-    texture = Image.open(f"data/floor_textures_large/{np.random.choice(os.listdir('data/floor_textures_large'))}")
+    texture = Image.open(f"data/floor_textures/{np.random.choice(os.listdir('data/floor_textures'))}")
     floor_plane.visual = trimesh.visual.TextureVisuals(
         uv=uv,
         image=texture
@@ -482,7 +482,7 @@ def get_args():
     parser.add_argument("--n-proc", type=int, help="Number of processes, if unspecified uses all available cores")
     return parser.parse_args()
 
-@hydra.main(config_path="../../config", config_name="scene_gen.yaml")
+@hydra.main(version_base=None, config_path="../../config", config_name="scene_gen.yaml")
 def main(hydra_cfg: DictConfig):
     s3 = boto3.client("s3")
     bucket_name = hydra_cfg["s3"]["bucket_name"]
