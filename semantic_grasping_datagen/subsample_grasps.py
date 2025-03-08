@@ -187,6 +187,9 @@ def load_unaligned_mesh_and_grasps(path: str):
     mesh.apply_translation(-mesh.centroid)
     return mesh, mesh_grasps, succ
 
+def raise_error(e: Exception):
+    raise e
+
 def load_aligned_meshes_and_grasps(category: str, obj_ids: list[str], n_proc=16):
     meshes = []
     grasps = []
@@ -201,11 +204,15 @@ def load_aligned_meshes_and_grasps(category: str, obj_ids: list[str], n_proc=16)
             if first_cvh is not None:
                 futures.append(pool.apply_async(load_and_align, (path, first_cvh)))
             else:
-                mesh, mesh_grasps, succ = load_unaligned_mesh_and_grasps(path)
-                ar = AsyncResult(pool, None, None)
-                ar._set(0, (True, (mesh, mesh_grasps, succ)))
-                futures.append(ar)
-                first_cvh = cvh(mesh)
+                try:
+                    mesh, mesh_grasps, succ = load_unaligned_mesh_and_grasps(path)
+                    first_cvh = cvh(mesh)
+                    ar = AsyncResult(pool, None, None)
+                    ar._set(0, (True, (mesh, mesh_grasps, succ)))
+                    futures.append(ar)
+                except MalformedMeshError as e:
+                    # propagate the error into a AsyncResult
+                    futures.append(pool.apply_async(raise_error, (e,)))
 
         aligned_obj_ids = []
         unaligned_obj_ids = []

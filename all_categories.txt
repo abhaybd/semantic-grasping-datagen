@@ -52,7 +52,6 @@ Mug
 NintendoDS
 Notepad
 Pan
-Paper
 PaperBox
 PaperClip
 Pen
