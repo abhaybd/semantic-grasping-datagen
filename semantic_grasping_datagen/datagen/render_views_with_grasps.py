@@ -5,8 +5,7 @@ import trimesh
 import numpy as np
 from acronym_tools import create_gripper_marker
 
-import utils
-from annotation import Annotation
+from semantic_grasping_datagen.annotation import Annotation
 
 
 with open("tmp/scene.pkl", "rb") as f:

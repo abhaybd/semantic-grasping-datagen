@@ -32,7 +32,7 @@ from datagen_utils import (
     not_none,
     set_exit_event
 )
-from annotation import Annotation
+from semantic_grasping_datagen.annotation import Annotation
 from utils import list_s3_files
 
 from acronym_tools import create_gripper_marker

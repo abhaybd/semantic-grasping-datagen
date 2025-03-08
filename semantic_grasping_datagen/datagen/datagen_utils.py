@@ -10,8 +10,7 @@ from itertools import count
 
 from acronym_tools import load_mesh, load_grasps
 
-import sys; sys.path.append("./scripts")
-from annotation import Annotation, GraspLabel
+from semantic_grasping_datagen.annotation import Annotation, GraspLabel
 
 
 exit_event = Event()

@@ -12,8 +12,7 @@ import io
 from PIL import Image
 import pyrender.light
 
-import datagen_utils
-from annotation import Annotation
+from semantic_grasping_datagen.datagen.datagen_utils import Annotation
 
 
 result = Image.new("RGB", (640 * 3, 480 * 3))

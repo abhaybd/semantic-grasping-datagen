@@ -25,9 +25,7 @@ import pyrender.light
 import trimesh
 from PIL import Image
 
-import datagen_utils
-assert datagen_utils  # imported for modification to path
-from annotation import Annotation
+from semantic_grasping_datagen.annotation import Annotation
 
 def get_args():
     parser = argparse.ArgumentParser()
