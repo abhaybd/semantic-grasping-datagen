@@ -20,6 +20,8 @@ from pydantic import BaseModel
 from itertools import compress
 from PIL import Image, ImageColor
 import yaml
+import hydra
+from omegaconf import DictConfig, OmegaConf
 
 from datagen_utils import (
     kelvin_to_rgb,
@@ -480,11 +482,11 @@ def get_args():
     parser.add_argument("--n-proc", type=int, help="Number of processes, if unspecified uses all available cores")
     return parser.parse_args()
 
-def main():
-    args = get_args()
-
+@hydra.main(config_path="../../config", config_name="scene_gen.yaml")
+def main(hydra_cfg: DictConfig):
     s3 = boto3.client("s3")
-    annot_files = list_s3_files(s3, "prior-datasets", "semantic-grasping/annotations-filtered/")
+    bucket_name = hydra_cfg["s3"]["bucket_name"]
+    annot_files = list_s3_files(s3, bucket_name, hydra_cfg["s3"]["annotation_prefix"])
     if os.path.isdir(ANNOTATIONS_DIR):
         annot_files_set = set(annot_files)
         existing_annots = set(f"semantic-grasping/annotations-filtered/{fn}" for fn in os.listdir(ANNOTATIONS_DIR) if fn.endswith(".json"))
@@ -494,29 +496,30 @@ def main():
     else:
         os.makedirs(ANNOTATIONS_DIR, exist_ok=True)
     for annot_file in tqdm(annot_files, desc="Downloading annotations", disable=len(annot_files) == 0):
-        s3.download_file("prior-datasets", annot_file, f"{ANNOTATIONS_DIR}/{os.path.basename(annot_file)}")
+        s3.download_file(bucket_name, annot_file, f"{ANNOTATIONS_DIR}/{os.path.basename(annot_file)}")
 
 
-    with open(args.config, "r") as f:
-        datagen_cfg = DatagenConfig.model_validate_json(f.read())
+    datagen_cfg = DatagenConfig(**OmegaConf.to_container(hydra_cfg["datagen"]))
 
-    os.makedirs(args.out_dir, exist_ok=True)
+    out_dir = hydra_cfg["out_dir"]
+    os.makedirs(out_dir, exist_ok=True)
 
-    n_existing_samples = sum(1 for fn in os.listdir(args.out_dir) if os.path.isdir(f"{args.out_dir}/{fn}"))
-    n_samples = args.n_samples - n_existing_samples
+    n_existing_samples = sum(1 for fn in os.listdir(out_dir) if os.path.isdir(f"{out_dir}/{fn}"))
+    total_samples = hydra_cfg["n_samples"]
+    n_samples = total_samples - n_existing_samples
     if n_samples <= 0:
         print(f"Already have {n_existing_samples} samples, skipping")
         return
     print(f"{n_existing_samples} existing samples, generating {n_samples} more")
-    nproc = args.n_proc or os.cpu_count()
+    nproc = hydra_cfg["n_proc"] if hydra_cfg["n_proc"] > 0 else os.cpu_count()
     with ProcessPoolExecutor(max_workers=nproc, initializer=procgen_init) as executor:
-        with tqdm(total=args.n_samples, desc="Generating scenes", dynamic_ncols=True, initial=n_existing_samples) as pbar:
+        with tqdm(total=total_samples, desc="Generating scenes", dynamic_ncols=True, initial=n_existing_samples) as pbar:
             futures: list[Future] = []
             try:
                 for _ in range(n_samples):
                     n_not_done = sum(not f.done() for f in futures)
                     if n_not_done < 4 * nproc:
-                        futures.append(executor.submit(procgen_worker, datagen_cfg, args.out_dir))
+                        futures.append(executor.submit(procgen_worker, datagen_cfg, out_dir))
                     else:
                         time.sleep(0.5)
 
@@ -535,29 +538,5 @@ def main():
                 raise
     print("Done!")
 
-def main_test():
-    annotations: list[Annotation] = []
-    for annot_fn in tqdm(os.listdir(ANNOTATIONS_DIR), desc="Loading annotations"):
-        with open(f"{ANNOTATIONS_DIR}/{annot_fn}", "r") as f:
-            annotations.append(Annotation.model_validate_json(f.read()))
-
-    annotated_instances: dict[str, set[str]] = {}
-    for annot in annotations:
-        if annot.obj.object_category not in annotated_instances:
-            annotated_instances[annot.obj.object_category] = set()
-        annotated_instances[annot.obj.object_category].add(annot.obj.object_id)
-
-    object_library = MeshLibrary(annotated_instances)
-    support_library = MeshLibrary.from_categories(SUPPORT_CATEGORIES, load_kwargs={"scale": 0.025})
-    background_categories = [cat for cat in ALL_OBJECT_CATEGORIES if cat not in annotated_instances]
-    background_library = MeshLibrary.from_categories(background_categories)
-
-    datagen_cfg = DatagenConfig()
-
-    data, _ = generate_scene(datagen_cfg, annotations, object_library, background_library, support_library)
-    with open("tmp/scene.pkl", "wb") as f:
-        pickle.dump(data, f)
-
 if __name__ == "__main__":
     main()
-    # main_test()
