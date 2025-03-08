@@ -8,7 +8,7 @@ import pickle
 import h5py
 from tqdm import tqdm
 
-from subsample_grasps import sample_grasps, load_aligned_meshes_and_grasps
+from subsample_grasps import sample_grasps, load_aligned_meshes_and_grasps, load_unaligned_mesh_and_grasps
 
 GRIPPER_POS_OFFSET = 0.075
 
@@ -104,11 +104,26 @@ def subsample_grasps(args):
 
     for category in tqdm(sampling_categories, desc="Subsampling grasps"):
         obj_ids = category_objects[category]
-        _, grasps, succs = load_aligned_meshes_and_grasps(category, obj_ids, args.n_proc)
-        n_grasps = max(args.n_grasps * len(obj_ids), args.min_grasps)
+        _, grasps, succs, aligned_obj_ids, unaligned_obj_ids = load_aligned_meshes_and_grasps(category, obj_ids, args.n_proc)
+
+        n_grasps = max(args.n_grasps * len(aligned_obj_ids), args.min_grasps)
         grasp_idxs_per_obj = sample_grasps(grasps, succs, n_grasps)
-        for obj_id, grasp_idxs in zip(obj_ids, grasp_idxs_per_obj):
+        for obj_id, grasp_idxs in zip(aligned_obj_ids, grasp_idxs_per_obj):
             grasp_filename = f"{category}_{obj_id}.h5"
+            with h5py.File(os.path.join(output_grasp_dir, grasp_filename), "r+") as f:
+                if "grasps/sampled_idxs" in f:
+                    del f["grasps/sampled_idxs"]
+                f["grasps/sampled_idxs"] = grasp_idxs
+
+            if category not in annotation_skeleton:
+                annotation_skeleton[category] = {}
+            annotation_skeleton[category][obj_id] = {i.item(): False for i in grasp_idxs}
+
+        for obj_id in unaligned_obj_ids:
+            path = f"data/grasps/{category}_{obj_id}.h5"
+            _, grasps, succs = load_unaligned_mesh_and_grasps(path)
+            grasp_idxs = sample_grasps([grasps], [succs], args.n_grasps)[0]
+            grasp_filename = os.path.basename(path)
             with h5py.File(os.path.join(output_grasp_dir, grasp_filename), "r+") as f:
                 if "grasps/sampled_idxs" in f:
                     del f["grasps/sampled_idxs"]

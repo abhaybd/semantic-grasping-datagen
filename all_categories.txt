@@ -1,3 +1,4 @@
+Banana
 Bag
 BeerBottle
 Book
@@ -10,6 +11,7 @@ Candle
 Canister
 CanOpener
 Cap
+Carrot
 Cassette
 CellPhone
 CerealBox

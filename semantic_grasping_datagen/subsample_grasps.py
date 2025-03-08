@@ -13,6 +13,9 @@ from acronym_tools import load_mesh, load_grasps, create_gripper_marker
 
 GRIPPER_POS_OFFSET = 0.075
 
+class MalformedMeshError(Exception):
+    pass
+
 def cvh(mesh: trimesh.Trimesh, max_iter=5):
     """
     Get the convex hull of a mesh.
@@ -24,8 +27,7 @@ def cvh(mesh: trimesh.Trimesh, max_iter=5):
     for _ in range(max_iter):
         if (cvh := cvh.convex_hull).is_watertight:
             return cvh
-    print("WARN: cvh failed")
-    return mesh.bounding_primitive
+    raise MalformedMeshError("Failed to compute convex hull")
 
 def is_zero_measure_2d(p: Path2D):
     return p.vertices.size == 0 or np.isclose(p.area, 0)
@@ -178,11 +180,18 @@ def load_and_align(path: str, target_cvh: trimesh.Trimesh):
     mesh_grasps = trf @ mesh_grasps
     return mesh, mesh_grasps, succ
 
+def load_unaligned_mesh_and_grasps(path: str):
+    mesh = load_mesh(path, mesh_root_dir="data")
+    mesh_grasps, succ = load_grasps(path)
+    mesh_grasps[..., :3, 3] -= mesh.centroid
+    mesh.apply_translation(-mesh.centroid)
+    return mesh, mesh_grasps, succ
+
 def load_aligned_meshes_and_grasps(category: str, obj_ids: list[str], n_proc=16):
     meshes = []
     grasps = []
     grasp_succs = []
-    first_cvh: trimesh.Trimesh = None
+    first_cvh: trimesh.Trimesh | None = None
 
     with mp.Pool(processes=n_proc) as pool:
         futures: list[AsyncResult] = []
@@ -192,21 +201,25 @@ def load_aligned_meshes_and_grasps(category: str, obj_ids: list[str], n_proc=16)
             if first_cvh is not None:
                 futures.append(pool.apply_async(load_and_align, (path, first_cvh)))
             else:
-                mesh = load_mesh(path, mesh_root_dir="data")
-                mesh_grasps, succ = load_grasps(path)
-                mesh_grasps[..., :3, 3] -= mesh.centroid
-                mesh.apply_translation(-mesh.centroid)
+                mesh, mesh_grasps, succ = load_unaligned_mesh_and_grasps(path)
                 ar = AsyncResult(pool, None, None)
                 ar._set(0, (True, (mesh, mesh_grasps, succ)))
                 futures.append(ar)
                 first_cvh = cvh(mesh)
 
-        for future in tqdm(futures, leave=False, desc=f"Aligning meshes for {category}"):
-            mesh, mesh_grasps, succ = future.get()
-            meshes.append(mesh)
-            grasps.append(mesh_grasps)
-            grasp_succs.append(succ)
-    return meshes, grasps, grasp_succs
+        aligned_obj_ids = []
+        unaligned_obj_ids = []
+        for i, future in tqdm(enumerate(futures), leave=False, desc=f"Aligning meshes for {category}", total=len(futures)):
+            try:
+                mesh, mesh_grasps, succ = future.get()
+                meshes.append(mesh)
+                grasps.append(mesh_grasps)
+                grasp_succs.append(succ)
+                aligned_obj_ids.append(obj_ids[i])
+            except MalformedMeshError:
+                print(f"Couldn't align mesh {category}_{obj_ids[i]}, will fall back to per-instance sampling")
+                unaligned_obj_ids.append(obj_ids[i])
+    return meshes, grasps, grasp_succs, aligned_obj_ids, unaligned_obj_ids
 
 def sample_grasps(grasps: list[np.ndarray], grasp_succs: list[np.ndarray], n_grasps: int) -> list[list[int]]:
     grasp_succ_idxs = [np.nonzero(succ)[0] for succ in grasp_succs]
@@ -270,7 +283,7 @@ def main():
             obj_ids.append(fn[len(category) + 1:-len(".h5")])
     obj_ids.sort()
 
-    meshes, grasps_per_obj, grasp_succs_per_obj = load_aligned_meshes_and_grasps(category, obj_ids)
+    meshes, grasps_per_obj, grasp_succs_per_obj, _, _ = load_aligned_meshes_and_grasps(category, obj_ids)
 
     # print("Per-Instance Sampling")
     # grasp_idxs_per_obj = []
