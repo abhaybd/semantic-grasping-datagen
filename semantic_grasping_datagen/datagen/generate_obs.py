@@ -1,4 +1,3 @@
-import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed, Future
 import multiprocessing as mp
 from io import BytesIO
@@ -10,6 +9,8 @@ from base64 import b64decode
 from contextlib import contextmanager
 import signal
 
+import hydra
+from omegaconf import DictConfig
 import yaml
 
 if os.environ.get("PYOPENGL_PLATFORM") is None:
@@ -26,16 +27,6 @@ import trimesh
 from PIL import Image
 
 from semantic_grasping_datagen.annotation import Annotation
-
-def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("input_dir", type=str, help="Input directory")
-    parser.add_argument("output_dir", type=str, help="Output directory")
-    parser.add_argument("--n-proc", type=int, help="Number of processes, if unspecified uses all available cores")
-    parser.add_argument("--n-scenes", type=int, help="Total number of scenes to process")
-    parser.add_argument("--img-size", type=int, nargs=2, default=(480, 640),
-                        help="Default image size as (height, width), for best performance this should match the generated data.")
-    return parser.parse_args()
 
 @contextmanager
 def block_signals(signals: list[int]):
@@ -163,24 +154,25 @@ class DummyExecutor:
         f.set_result(ret)
         return f
 
-def main():
-    args = get_args()
+@hydra.main(version_base=None, config_path="../../config", config_name="obs_gen.yaml")
+def main(cfg: DictConfig):
+    in_dir = cfg["scene_dir"]
+    out_dir = cfg["out_dir"]
+    os.makedirs(out_dir, exist_ok=True)
 
-    os.makedirs(args.output_dir, exist_ok=True)
-
-    nproc = args.n_proc or os.cpu_count()
+    nproc = cfg["n_proc"] or os.cpu_count()
     multiproc = nproc > 1
     with (ProcessPoolExecutor if multiproc else DummyExecutor)(
         max_workers=nproc,
         initializer=worker_init,
-        initargs=(args.img_size,)
+        initargs=(cfg["img_size"],)
     ) as executor:
         while True:
-            scenes: set[str] = set(fn for fn in os.listdir(args.input_dir) if os.path.isdir(f"{args.input_dir}/{fn}"))
-            processed_scenes: set[str] = set(fn for fn in os.listdir(args.output_dir) if os.path.isdir(f"{args.output_dir}/{fn}"))
+            scenes: set[str] = set(fn for fn in os.listdir(in_dir) if os.path.isdir(f"{in_dir}/{fn}"))
+            processed_scenes: set[str] = set(fn for fn in os.listdir(out_dir) if os.path.isdir(f"{out_dir}/{fn}"))
             print(f"Total generated observations: {len(processed_scenes)}")
 
-            if args.n_scenes and len(processed_scenes) >= args.n_scenes:
+            if "n_scenes" in cfg and len(processed_scenes) >= cfg["n_scenes"]:
                 print("Generated enough samples, exiting")
                 break
 
@@ -195,7 +187,7 @@ def main():
             futures: list[Future] = []
             # if not multiproc, work happens here - otherwise happens in next loop
             for fn in tqdm(batch, desc="Rendering", dynamic_ncols=True, disable=multiproc):
-                futures.append(executor.submit(render, args.output_dir, f"{args.input_dir}/{fn}"))
+                futures.append(executor.submit(render, out_dir, f"{in_dir}/{fn}"))
             if multiproc:
                 for f in tqdm(as_completed(futures), total=len(futures), desc="Rendering", dynamic_ncols=True, smoothing=0):
                     f.result()
