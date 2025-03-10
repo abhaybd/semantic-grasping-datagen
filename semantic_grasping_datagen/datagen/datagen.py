@@ -430,7 +430,7 @@ def generate_scene(datagen_cfg: DatagenConfig, annotations: list[Annotation], ob
         })
     return data, scene
 
-def procgen_init(data_dir: str):
+def procgen_init(data_dir: str, blacklist: set[str]):
     annotations: list[Annotation] = []
     for annot_fn in os.listdir(ANNOTATIONS_DIR):
         with open(f"{ANNOTATIONS_DIR}/{annot_fn}", "r") as f:
@@ -438,6 +438,8 @@ def procgen_init(data_dir: str):
 
     annotated_instances: dict[str, set[str]] = {}
     for annot in annotations:
+        if f"{annot.obj.object_category}_{annot.obj.object_id}" in blacklist:
+            continue
         if annot.obj.object_category not in annotated_instances:
             annotated_instances[annot.obj.object_category] = set()
         annotated_instances[annot.obj.object_category].add(annot.obj.object_id)
@@ -496,6 +498,12 @@ def main(hydra_cfg: DictConfig):
     out_dir = hydra_cfg["out_dir"]
     os.makedirs(out_dir, exist_ok=True)
 
+    if "blacklist" in hydra_cfg:
+        with open(hydra_cfg["blacklist"], "r") as f:
+            blacklist = set(f.read().strip().splitlines())
+    else:
+        blacklist = set()
+
     n_existing_samples = sum(1 for fn in os.listdir(out_dir) if os.path.isdir(f"{out_dir}/{fn}"))
     total_samples = hydra_cfg["n_samples"]
     n_samples = total_samples - n_existing_samples
@@ -504,7 +512,11 @@ def main(hydra_cfg: DictConfig):
         return
     print(f"{n_existing_samples} existing samples, generating {n_samples} more")
     nproc = hydra_cfg["n_proc"] if hydra_cfg["n_proc"] > 0 else os.cpu_count()
-    with ProcessPoolExecutor(max_workers=nproc, initializer=procgen_init, initargs=(hydra_cfg["data_dir"],)) as executor:
+    with ProcessPoolExecutor(
+        max_workers=nproc,
+        initializer=procgen_init,
+        initargs=(hydra_cfg["data_dir"], blacklist)
+    ) as executor:
         with tqdm(total=total_samples, desc="Generating scenes", dynamic_ncols=True, initial=n_existing_samples) as pbar:
             futures: list[Future] = []
             try:
