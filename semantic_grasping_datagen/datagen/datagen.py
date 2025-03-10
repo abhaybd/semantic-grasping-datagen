@@ -504,7 +504,7 @@ def main(hydra_cfg: DictConfig):
         return
     print(f"{n_existing_samples} existing samples, generating {n_samples} more")
     nproc = hydra_cfg["n_proc"] if hydra_cfg["n_proc"] > 0 else os.cpu_count()
-    with ProcessPoolExecutor(max_workers=nproc, initializer=procgen_init) as executor:
+    with ProcessPoolExecutor(max_workers=nproc, initializer=procgen_init, initargs=(hydra_cfg["data_dir"],)) as executor:
         with tqdm(total=total_samples, desc="Generating scenes", dynamic_ncols=True, initial=n_existing_samples) as pbar:
             futures: list[Future] = []
             try:
