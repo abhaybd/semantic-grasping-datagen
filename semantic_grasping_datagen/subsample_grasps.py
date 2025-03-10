@@ -166,8 +166,8 @@ def grasp_dist(grasp: np.ndarray, all_grasps: np.ndarray):
 
     return pos_dist + 0.01 * rot_dist
 
-def load_and_align(path: str, target_cvh: trimesh.Trimesh):
-    mesh = load_mesh(path, mesh_root_dir="data")
+def load_and_align(data_dir: str, path: str, target_cvh: trimesh.Trimesh):
+    mesh = load_mesh(path, mesh_root_dir=data_dir)
     mesh_grasps, succ = load_grasps(path)
     mesh_grasps[..., :3, 3] -= mesh.centroid
     mesh.apply_translation(-mesh.centroid)
@@ -180,8 +180,8 @@ def load_and_align(path: str, target_cvh: trimesh.Trimesh):
     mesh_grasps = trf @ mesh_grasps
     return mesh, mesh_grasps, succ
 
-def load_unaligned_mesh_and_grasps(path: str):
-    mesh = load_mesh(path, mesh_root_dir="data")
+def load_unaligned_mesh_and_grasps(data_dir: str, path: str):
+    mesh = load_mesh(path, mesh_root_dir=data_dir)
     mesh_grasps, succ = load_grasps(path)
     mesh_grasps[..., :3, 3] -= mesh.centroid
     mesh.apply_translation(-mesh.centroid)
@@ -190,7 +190,7 @@ def load_unaligned_mesh_and_grasps(path: str):
 def raise_error(e: Exception):
     raise e
 
-def load_aligned_meshes_and_grasps(category: str, obj_ids: list[str], n_proc=16):
+def load_aligned_meshes_and_grasps(data_dir: str, category: str, obj_ids: list[str], n_proc=16):
     meshes = []
     grasps = []
     grasp_succs = []
@@ -199,13 +199,13 @@ def load_aligned_meshes_and_grasps(category: str, obj_ids: list[str], n_proc=16)
     with mp.Pool(processes=n_proc) as pool:
         futures: list[AsyncResult] = []
         for obj_id in obj_ids:
-            path = f"data/grasps/{category}_{obj_id}.h5"
+            path = f"{data_dir}/grasps/{category}_{obj_id}.h5"
 
             if first_cvh is not None:
-                futures.append(pool.apply_async(load_and_align, (path, first_cvh)))
+                futures.append(pool.apply_async(load_and_align, (data_dir, path, first_cvh)))
             else:
                 try:
-                    mesh, mesh_grasps, succ = load_unaligned_mesh_and_grasps(path)
+                    mesh, mesh_grasps, succ = load_unaligned_mesh_and_grasps(data_dir, path)
                     first_cvh = cvh(mesh)
                     ar = AsyncResult(pool, None, None)
                     ar._set(0, (True, (mesh, mesh_grasps, succ)))
@@ -290,7 +290,7 @@ def main():
             obj_ids.append(fn[len(category) + 1:-len(".h5")])
     obj_ids.sort()
 
-    meshes, grasps_per_obj, grasp_succs_per_obj, _, _ = load_aligned_meshes_and_grasps(category, obj_ids)
+    meshes, grasps_per_obj, grasp_succs_per_obj, _, _ = load_aligned_meshes_and_grasps("data", category, obj_ids)
 
     # print("Per-Instance Sampling")
     # grasp_idxs_per_obj = []

@@ -104,7 +104,7 @@ def subsample_grasps(args):
 
     for category in tqdm(sampling_categories, desc="Subsampling grasps"):
         obj_ids = category_objects[category]
-        _, grasps, succs, aligned_obj_ids, unaligned_obj_ids = load_aligned_meshes_and_grasps(category, obj_ids, args.n_proc)
+        _, grasps, succs, aligned_obj_ids, unaligned_obj_ids = load_aligned_meshes_and_grasps(args.output_dir, category, obj_ids, args.n_proc)
 
         if len(aligned_obj_ids) > 0:
             n_grasps = max(args.n_grasps * len(aligned_obj_ids), args.min_grasps)
@@ -121,8 +121,8 @@ def subsample_grasps(args):
                 annotation_skeleton[category][obj_id] = {i.item(): False for i in grasp_idxs}
 
         for obj_id in unaligned_obj_ids:
-            path = f"data/grasps/{category}_{obj_id}.h5"
-            _, grasps, succs = load_unaligned_mesh_and_grasps(path)
+            path = f"{output_grasp_dir}/{category}_{obj_id}.h5"
+            _, grasps, succs = load_unaligned_mesh_and_grasps(args.output_dir, path)
             grasp_idxs = sample_grasps([grasps], [succs], args.n_grasps)[0]
             grasp_filename = os.path.basename(path)
             with h5py.File(os.path.join(output_grasp_dir, grasp_filename), "r+") as f:

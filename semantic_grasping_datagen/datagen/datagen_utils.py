@@ -93,6 +93,7 @@ class MeshLibrary(object):
     def from_categories(cls, categories: list[str], load_kwargs: dict | None = None):
         library: dict[str, set[str]] = {}
         for category in categories:
+            # TODO: replace all usages of data/grasps with references to data_dir
             for fn in os.listdir("data/grasps"):
                 if fn.startswith(category + "_"):
                     obj_id = fn[len(category) + 1:-len(".h5")]
@@ -139,6 +140,7 @@ class MeshLibrary(object):
     @lru_cache(maxsize=2048)
     def _load_mesh(self, category: str, obj_id: str, center: bool = True):
         fn = f"data/grasps/{category}_{obj_id}.h5"
+        # TODO: remove hardcoded path
         mesh = load_mesh(fn, mesh_root_dir="data", **self.load_kwargs)
         if center:
             mesh.apply_translation(-mesh.centroid)
@@ -146,6 +148,7 @@ class MeshLibrary(object):
 
     @lru_cache(maxsize=2048)
     def grasps(self, category: str, obj_id: str):
+        # TODO: remove hardcoded path
         T, success = load_grasps(f"data/grasps/{category}_{obj_id}.h5")
         mesh = self._load_mesh(category, obj_id, center=False)
         T[:, :3, 3] -= mesh.centroid
