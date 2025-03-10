@@ -430,7 +430,7 @@ def generate_scene(datagen_cfg: DatagenConfig, annotations: list[Annotation], ob
         })
     return data, scene
 
-def procgen_init():
+def procgen_init(data_dir: str):
     annotations: list[Annotation] = []
     for annot_fn in os.listdir(ANNOTATIONS_DIR):
         with open(f"{ANNOTATIONS_DIR}/{annot_fn}", "r") as f:
@@ -443,10 +443,10 @@ def procgen_init():
         annotated_instances[annot.obj.object_category].add(annot.obj.object_id)
 
     globals()["annotations"] = annotations
-    globals()["object_library"] = MeshLibrary(annotated_instances)
+    globals()["object_library"] = MeshLibrary(data_dir, annotated_instances)
     background_categories = [cat for cat in ALL_OBJECT_CATEGORIES if cat not in annotated_instances]
-    globals()["background_library"] = MeshLibrary.from_categories(background_categories)
-    globals()["support_library"] = MeshLibrary.from_categories(SUPPORT_CATEGORIES, load_kwargs={"scale": 0.025})
+    globals()["background_library"] = MeshLibrary.from_categories(data_dir, background_categories)
+    globals()["support_library"] = MeshLibrary.from_categories(data_dir, SUPPORT_CATEGORIES, load_kwargs={"scale": 0.025})
 
     import threading
     def exit_if_orphaned():
@@ -473,14 +473,6 @@ def procgen_worker(datagen_cfg: DatagenConfig, out_dir: str):
         yaml.dump({
             "objects": objects_in_scene,
         }, f)
-
-def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("config", type=str, help="Path to config file")
-    parser.add_argument("n_samples", type=int, help="Number of samples to generate")
-    parser.add_argument("out_dir", type=str, help="Output directory")
-    parser.add_argument("--n-proc", type=int, help="Number of processes, if unspecified uses all available cores")
-    return parser.parse_args()
 
 @hydra.main(version_base=None, config_path="../../config", config_name="scene_gen.yaml")
 def main(hydra_cfg: DictConfig):

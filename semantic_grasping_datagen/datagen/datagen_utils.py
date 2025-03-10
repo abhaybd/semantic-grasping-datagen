@@ -85,22 +85,22 @@ def random_delta_rot(roll_range: float, pitch_range: float, yaw_range: float):
     return R.from_euler("xyz", [roll, pitch, yaw]).as_matrix()
 
 class MeshLibrary(object):
-    def __init__(self, library: dict[str, set[str]], load_kwargs: dict | None = None):
+    def __init__(self, data_dir: str, library: dict[str, set[str]], load_kwargs: dict | None = None):
+        self.data_dir = data_dir
         self.library = library
         self.load_kwargs = load_kwargs or {}
 
     @classmethod
-    def from_categories(cls, categories: list[str], load_kwargs: dict | None = None):
+    def from_categories(cls, data_dir: str, categories: list[str], load_kwargs: dict | None = None):
         library: dict[str, set[str]] = {}
         for category in categories:
-            # TODO: replace all usages of data/grasps with references to data_dir
-            for fn in os.listdir("data/grasps"):
+            for fn in os.listdir(f"{data_dir}/grasps"):
                 if fn.startswith(category + "_"):
                     obj_id = fn[len(category) + 1:-len(".h5")]
                     if category not in library:
                         library[category] = set()
                     library[category].add(obj_id)
-        return cls(library, load_kwargs)
+        return cls(data_dir, library, load_kwargs)
 
     def __getitem__(self, key: tuple[str, str]) -> trimesh.Trimesh:
         category, obj_id = key
@@ -139,17 +139,17 @@ class MeshLibrary(object):
 
     @lru_cache(maxsize=2048)
     def _load_mesh(self, category: str, obj_id: str, center: bool = True):
-        fn = f"data/grasps/{category}_{obj_id}.h5"
-        # TODO: remove hardcoded path
-        mesh = load_mesh(fn, mesh_root_dir="data", **self.load_kwargs)
+        data_dir = self.data_dir
+        fn = f"{data_dir}/grasps/{category}_{obj_id}.h5"
+        mesh = load_mesh(fn, mesh_root_dir=data_dir, **self.load_kwargs)
         if center:
             mesh.apply_translation(-mesh.centroid)
         return mesh
 
     @lru_cache(maxsize=2048)
     def grasps(self, category: str, obj_id: str):
-        # TODO: remove hardcoded path
-        T, success = load_grasps(f"data/grasps/{category}_{obj_id}.h5")
-        mesh = self._load_mesh(category, obj_id, center=False)
+        data_dir = self.data_dir
+        T, success = load_grasps(f"{data_dir}/grasps/{category}_{obj_id}.h5")
+        mesh = self._load_mesh(data_dir, category, obj_id, center=False)
         T[:, :3, 3] -= mesh.centroid
         return T, success
