@@ -515,13 +515,18 @@ def main(hydra_cfg: DictConfig):
                     else:
                         time.sleep(0.5)
 
-                    new_futures = [f for f in futures if not f.done()]
-                    if len(new_futures) < len(futures):
-                        pbar.update(len(futures) - len(new_futures))
-                        futures = new_futures
+                    new_futures: list[Future] = []
+                    for f in futures:
+                        if f.done():
+                            f.result()
+                            pbar.update(1)
+                        else:
+                            new_futures.append(f)
+                    futures = new_futures
                 print("Waiting for remaining subprocesses to finish")
                 if len(futures) > 0:
-                    for _ in as_completed(futures):
+                    for f in as_completed(futures):
+                        f.result()
                         pbar.update(1)
             except KeyboardInterrupt:
                 print("Keyboard interrupt, shutting down subprocesses and exiting")
