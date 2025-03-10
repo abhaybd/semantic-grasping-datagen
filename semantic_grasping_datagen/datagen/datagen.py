@@ -519,11 +519,13 @@ def main(hydra_cfg: DictConfig):
     ) as executor:
         with tqdm(total=total_samples, desc="Generating scenes", dynamic_ncols=True, initial=n_existing_samples) as pbar:
             futures: list[Future] = []
+            n_submitted = 0
             try:
-                for _ in range(n_samples):
+                while n_submitted < n_samples:
                     n_not_done = sum(not f.done() for f in futures)
                     if n_not_done < 4 * nproc:
                         futures.append(executor.submit(procgen_worker, datagen_cfg, out_dir))
+                        n_submitted += 1
                     else:
                         time.sleep(0.5)
 
