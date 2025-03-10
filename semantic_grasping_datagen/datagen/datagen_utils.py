@@ -150,6 +150,6 @@ class MeshLibrary(object):
     def grasps(self, category: str, obj_id: str):
         data_dir = self.data_dir
         T, success = load_grasps(f"{data_dir}/grasps/{category}_{obj_id}.h5")
-        mesh = self._load_mesh(data_dir, category, obj_id, center=False)
+        mesh = self._load_mesh(category, obj_id, center=False)
         T[:, :3, 3] -= mesh.centroid
         return T, success
