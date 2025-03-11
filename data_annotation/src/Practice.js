@@ -104,6 +104,11 @@ const Practice = () => {
   const [submittedAnswers, setSubmittedAnswers] = useState(new Set());
   const [showTutorial, setShowTutorial] = useState(false);
   const [correctAnswers, setCorrectAnswers] = useState(0);
+  const [userId, setUserId] = useState('');
+  const [hasStarted, setHasStarted] = useState(false);
+  const [questionStartTime, setQuestionStartTime] = useState(null);
+  const [questionResults, setQuestionResults] = useState([]);
+  const [practiceStartTime] = useState(Date.now());
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -131,6 +136,12 @@ const Practice = () => {
     }
   }, []);
 
+  useEffect(() => {
+    if (hasStarted && !questionStartTime) {
+      setQuestionStartTime(Date.now());
+    }
+  }, [hasStarted, questionStartTime]);
+
   const handleSubmit = () => {
     if (selectedAnswer === null) return;
     
@@ -139,12 +150,53 @@ const Practice = () => {
       setCorrectAnswers(prev => prev + 1);
     }
 
+    const timeTaken = (Date.now() - questionStartTime) / 1000;
+    
+    // Only record result if this is the first answer for this question
+    if (submittedAnswers.size === 0) {
+      setQuestionResults(prev => [...prev, {
+        question_idx: currentQuestionIdx,
+        correct: isCorrect,
+        time_taken: timeTaken
+      }]);
+    }
+
     setShowFeedback(true);
     setSubmittedAnswers(prev => new Set([...prev, selectedAnswer]));
   };
 
-  const handleContinue = () => {
+  const submitPracticeResults = async () => {
+    const now = new Date();
+    const timestamp = `${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    
+    const result = {
+      user_id: userId,
+      total_time: (Date.now() - practiceStartTime) / 1000,
+      question_results: questionResults,
+      timestamp
+    };
+
+    try {
+      const response = await fetch('/api/submit-practice-result', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(result)
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to submit practice results');
+      }
+    } catch (error) {
+      console.error('Error submitting practice results:', error);
+    }
+  };
+
+  const handleContinue = async () => {
     if (currentQuestionIdx === QUESTIONS.length - 1) {
+      await submitPracticeResults();
+      
       if (correctAnswers / QUESTIONS.length >= 0.5) {
         localStorage.setItem('practicePassedTime', Date.now().toString());
         navigate({
@@ -166,8 +218,39 @@ const Practice = () => {
       setSelectedAnswer(null);
       setShowFeedback(false);
       setSubmittedAnswers(new Set());
+      setQuestionStartTime(Date.now());
     }
   };
+
+  if (!hasStarted) {
+    return (
+      <div className="quiz-container welcome">
+        <h2>Welcome to Practice Questions</h2>
+        <p>Please enter your user ID to begin:</p>
+        <form 
+          onSubmit={(e) => {
+            e.preventDefault();
+            setHasStarted(true);
+          }}
+        >
+          <input
+            type="text"
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            placeholder="Enter User ID"
+            className="user-id-input"
+            required
+          />
+          <button 
+            type="submit"
+            className="quiz-submit-button"
+          >
+            Start Practice
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="quiz-container">

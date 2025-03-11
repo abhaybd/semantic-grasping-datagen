@@ -16,13 +16,14 @@ import boto3
 import re
 
 from acronym_tools import create_gripper_marker
-from annotation import Annotation
+from annotation import Annotation, PracticeResult
 
 s3 = boto3.client("s3")
 
 BUCKET_NAME = "prior-datasets"
 DATA_PREFIX = "semantic-grasping/acronym/"
 ANNOTATION_PREFIX = "semantic-grasping/annotations/"
+PRACTICE_PREFIX = "semantic-grasping/practice-results/"
 
 if "ANNOT_CATEGORIES" in os.environ:
     CATEGORIES = set(s.strip() for s in os.environ["ANNOT_CATEGORIES"].split(","))
@@ -190,6 +191,14 @@ async def submit_annotation(annotation: Annotation):
     annot_bytes = io.BytesIO(annotation.model_dump_json().encode("utf-8"))
     s3.upload_fileobj(annot_bytes, BUCKET_NAME, annotation_key)
 
+@app.post("/api/submit-practice-result")
+async def submit_practice_result(result: PracticeResult):
+    print(f"User {result.user_id} completed practice with {sum(1 for q in result.question_results if q.correct)}/{len(result.question_results)} correct answers")
+    print(result.model_dump_json())
+
+    result_key = f"{PRACTICE_PREFIX}{result.user_id}_{result.timestamp}.json"
+    result_bytes = io.BytesIO(result.model_dump_json().encode("utf-8"))
+    s3.upload_fileobj(result_bytes, BUCKET_NAME, result_key)
 
 app.mount("/static", StaticFiles(directory="data_annotation/build/static"), name="static")
 

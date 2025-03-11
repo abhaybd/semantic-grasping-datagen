@@ -122,4 +122,72 @@
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.user-id-input {
+  width: 100%;
+  max-width: 300px;
+  padding: 10px;
+  margin: 20px 0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+.user-id-input:focus {
+  outline: none;
+  border-color: #ff69b4;
+  box-shadow: 0 0 0 2px rgba(255, 105, 180, 0.1);
+}
+
+.header-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.user-id-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-id-section label {
+  font-weight: bold;
+}
+
+.user-id-input {
+  width: 200px;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.user-id-warning {
+  color: #dc3545;
+  font-size: 14px;
+  margin: 0;
+}
+
+.quiz-container.welcome {
+  max-width: 600px;
+  margin: 40px auto;
+}
+
+.quiz-container.welcome .user-id-input {
+  display: block;
+  width: 100%;
+  max-width: 300px;
+  padding: 10px;
+  margin: 20px 0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+.quiz-container.welcome .quiz-submit-button {
+  display: block;
+  margin: 20px auto;
 } 

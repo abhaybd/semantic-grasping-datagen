@@ -30,8 +30,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY setup.py .
 COPY README.md .
-COPY acronym_tools .
-RUN pip install --no-cache-dir -e .
 
 # Copy the built React app from the previous stage
 COPY --from=build /app/data_annotation/build ./data_annotation/build
@@ -45,4 +43,4 @@ RUN chmod -R a+rw annotations
 EXPOSE 8080
 
 # Run the application
-CMD ["fastapi", "run", "scripts/annotation_server.py", "--port", "8080"]
+CMD ["fastapi", "run", "semantic_grasping_datagen/annotation_server.py", "--port", "8080"]

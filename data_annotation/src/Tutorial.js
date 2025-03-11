@@ -42,7 +42,7 @@ const Tutorial = ({ onClose }) => {
           <p>
             The description should only be about the grasp, not about it's appropriateness or quality.
             For example, do not say that the grasp is good or bad, or comment on its stability.
-            Additionally, do not describe where a better grasp would be.
+            Additionally, do not describe where a better grasp would be, or speculate how the object would move after being grasped.
           </p>
           <p>
             For example, shown this teapot, a possible description could be:
