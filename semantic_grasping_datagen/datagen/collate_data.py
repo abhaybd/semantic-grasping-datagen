@@ -1,4 +1,5 @@
 import argparse
+from collections import defaultdict
 import os
 import yaml
 import glob
@@ -40,8 +41,11 @@ def main():
     with open(dataset_path, "w", newline='') as f:
         writer = csv.writer(f)
         writer.writerow(["annotation_id", "text", "observation_path"])  # Write header
-        
-        for annotation_path in tqdm(glob.glob(os.path.join(args.observation_dir, "**/annot.yaml"), recursive=True)):
+
+        for annotation_path in tqdm(
+            glob.glob(os.path.join(args.observation_dir, "**/annot.yaml"), recursive=True),
+            desc="Collating annotations"
+        ):
             with open(annotation_path, "r") as f:
                 annotation = yaml.safe_load(f)
 
@@ -53,7 +57,20 @@ def main():
             writer.writerow([annot_id, annot_desc, data_path])
             texts.append(annot_desc)
 
-    text_embeddings = embed_texts(args.batch_size, texts)
+    print("Embedding texts...")
+    unique_text_idxs = defaultdict(list)
+    for i, text in enumerate(texts):
+        unique_text_idxs[text].append(i)
+
+    # to save time, only embed unique texts and duplicate
+    unique_texts = list(unique_text_idxs.keys())
+    unique_texts_embeddings = embed_texts(args.batch_size, unique_texts)
+    text_embeddings = np.zeros((len(texts), unique_texts_embeddings.shape[1]))
+    for text, embedded_text in zip(unique_texts, unique_texts_embeddings):
+        idxs = unique_text_idxs[text]
+        text_embeddings[idxs] = embedded_text
+    assert np.all(np.isclose(np.linalg.norm(text_embeddings, axis=1), 1.0))
+
     np.save(os.path.join(args.out_dir, "text_embeddings.npy"), text_embeddings)
 
 if __name__ == "__main__":
