@@ -19,6 +19,7 @@ class Annotation(BaseModel, frozen=True):
     is_mesh_malformed: bool = False
     user_id: str = ""
     time_taken: float = -1.0
+    study_id: str = ""
 
 class QuestionResult(BaseModel, frozen=True):
     question_idx: int
@@ -30,3 +31,4 @@ class PracticeResult(BaseModel, frozen=True):
     total_time: float  # in seconds
     question_results: list[QuestionResult]
     timestamp: str  # in mmdd_hhmm format
+    study_id: str = ""

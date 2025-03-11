@@ -173,7 +173,8 @@ const Practice = () => {
       user_id: userId,
       total_time: (Date.now() - practiceStartTime) / 1000,
       question_results: questionResults,
-      timestamp
+      timestamp,
+      study_id: searchParams.get('study_id') || ''
     };
 
     try {

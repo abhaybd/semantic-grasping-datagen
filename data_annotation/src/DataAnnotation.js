@@ -134,6 +134,7 @@ const DataAnnotation = () => {
           grasp_id={annotInfo?.grasp_id}
           onSubmit={onFormSubmit}
           prolific_code={searchParams.get('prolific_code')}
+          study_id={searchParams.get('study_id')}
         />
       </div>
       {showTutorial && <Tutorial onClose={() => setShowTutorial(false)} />}

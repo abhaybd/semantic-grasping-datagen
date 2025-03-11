@@ -34,7 +34,11 @@ def completed_annotations(s3: S3Client):
     keys = list_s3_files(s3, BUCKET_NAME, FILTERED_ANNOT_PREFIX)
     for key in keys:
         filename = os.path.basename(key)[:-len(".json")]
-        object_category, object_id, grasp_id, _ = filename.split("__")
+        fn_parts = filename.split("__")
+        if len(fn_parts) == 4:
+            object_category, object_id, grasp_id, _ = fn_parts
+        else:
+            _, object_category, object_id, grasp_id, _ = fn_parts
         ret.add((object_category, object_id, grasp_id))
     return ret
 

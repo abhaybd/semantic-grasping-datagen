@@ -61,7 +61,11 @@ while True:
             key = obj["Key"]
             if key.endswith(".json"):
                 filename = os.path.basename(key)[:-len(".json")]
-                object_category, object_id, grasp_id, _ = filename.split("__")
+                fn_parts = filename.split("__")
+                if len(fn_parts) == 4:
+                    object_category, object_id, grasp_id, _ = fn_parts
+                else:
+                    _, object_category, object_id, grasp_id, _ = fn_parts
                 grasp_id = int(grasp_id)
                 if object_category in annotated_grasps and \
                     object_id in annotated_grasps[object_category] and \
@@ -184,10 +188,11 @@ async def submit_annotation(annotation: Annotation):
     obj_id = annotation.obj.object_id
     grasp_id = annotation.grasp_id
     user_id = annotation.user_id
+    study_id = annotation.study_id or "NOSTUDYID"
     print(f"User {user_id} annotated: {category}_{obj_id}, grasp {grasp_id}. Total annotations: {total_annotations+1}")
 
     annotated_grasps[category][obj_id][grasp_id] = True
-    annotation_key = f"{ANNOTATION_PREFIX}{category}__{obj_id}__{grasp_id}__{user_id}.json"
+    annotation_key = f"{ANNOTATION_PREFIX}{study_id}__{category}__{obj_id}__{grasp_id}__{user_id}.json"
     annot_bytes = io.BytesIO(annotation.model_dump_json().encode("utf-8"))
     s3.upload_fileobj(annot_bytes, BUCKET_NAME, annotation_key)
 
@@ -196,7 +201,8 @@ async def submit_practice_result(result: PracticeResult):
     print(f"User {result.user_id} completed practice with {sum(1 for q in result.question_results if q.correct)}/{len(result.question_results)} correct answers")
     print(result.model_dump_json())
 
-    result_key = f"{PRACTICE_PREFIX}{result.user_id}_{result.timestamp}.json"
+    study_id = result.study_id or "NOSTUDYID"
+    result_key = f"{PRACTICE_PREFIX}{study_id}__{result.user_id}_{result.timestamp}.json"
     result_bytes = io.BytesIO(result.model_dump_json().encode("utf-8"))
     s3.upload_fileobj(result_bytes, BUCKET_NAME, result_key)
 

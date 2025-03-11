@@ -3,7 +3,7 @@ import { BsFillInfoCircleFill } from "react-icons/bs";
 import { v4 as uuidv4 } from 'uuid';
 import './AnnotationForm.css';
 
-const AnnotationForm = ({ category, object_id, grasp_id, onSubmit, prolific_code }) => {
+const AnnotationForm = ({ category, object_id, grasp_id, onSubmit, prolific_code, study_id }) => {
     const [objDescription, setObjDescription] = useState('');
     const [graspDescription, setGraspDescription] = useState('');
     const [isMalformed, setIsMalformed] = useState('');
@@ -55,6 +55,7 @@ const AnnotationForm = ({ category, object_id, grasp_id, onSubmit, prolific_code
                     "grasp_label": graspLabel,
                     "user_id": userID,
                     "time_taken": (Date.now() - startTime) / 1000,
+                    "study_id": study_id || ''
                 }),
             });
 
