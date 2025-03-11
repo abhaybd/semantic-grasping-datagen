@@ -105,39 +105,35 @@ def render(out_dir: str, scene_dir: str):
     renderer: pyrender.OffscreenRenderer = globals()["renderer"]
     renderer.viewport_height, renderer.viewport_width = scene_data["img_size"]
 
-    obs_per_view: list[list[tuple[dict, Annotation, str]]] = []
-    rgb_per_view: list[np.ndarray] = []
+    view_observations: list[list[tuple[np.ndarray, Annotation, str]]] = []
+    view_rgb: list[np.ndarray] = []
+    view_xyz: list[np.ndarray] = []
     for view in scene_data["views"]:
         cam_K = np.array(view["cam_K"])
         cam_pose = np.array(view["cam_pose"])
         set_camera(scene, cam_K, cam_pose)
 
         color, depth = renderer.render(scene, flags=pyrender.RenderFlags.SHADOWS_DIRECTIONAL)
-        xyz = backproject(cam_K, depth)
-        rgb_per_view.append(color)
-        obs = []
+        xyz = backproject(cam_K, depth).astype(np.float32)
+        view_rgb.append(color)
+        view_xyz.append(xyz)
+        observations = []
         for annot_id in view["annotations_in_view"]:
             annot, grasp_pose = all_annotations[annot_id]
             grasp_pose_in_cam_frame = np.linalg.solve(cam_pose, grasp_pose)
-            obs_data = {
-                "rgb": color,
-                "xyz": xyz,
-                "grasp_pose": grasp_pose_in_cam_frame,
-            }
-            # obs.append(pickle.dumps(obs_data))
-            obs.append((obs_data, annot, annot_id))
-        obs_per_view.append(obs)
+            observations.append((grasp_pose_in_cam_frame, annot, annot_id))
+        view_observations.append(observations)
 
     with block_signals([signal.SIGINT]):
-        for view_idx, (rgb, obs) in enumerate(zip(rgb_per_view, obs_per_view)):
+        for view_idx, (rgb, xyz, observations) in enumerate(zip(view_rgb, view_xyz, view_observations)):
             view_dir = f"{out_dir}/{scene_id}/view_{view_idx}"
             os.makedirs(view_dir, exist_ok=True)
             Image.fromarray(rgb).save(f"{view_dir}/rgb.png")
-            for obs_idx, (obs_data, annot, annot_id) in enumerate(obs):
+            np.save(f"{view_dir}/xyz.npy", xyz)
+            for obs_idx, (grasp_pose, annot, annot_id) in enumerate(observations):
                 obs_dir = f"{view_dir}/obs_{obs_idx}"
                 os.makedirs(obs_dir, exist_ok=True)
-                with open(f"{obs_dir}/obs.pkl", "wb") as f:
-                    pickle.dump(obs_data, f)
+                np.save(f"{obs_dir}/grasp_pose.npy", grasp_pose)
                 with open(f"{obs_dir}/annot.yaml", "w") as f:
                     yaml.dump({
                         "annotation_id": annot_id,
