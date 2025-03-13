@@ -1,4 +1,5 @@
 import argparse
+from collections import defaultdict
 import os
 import random
 import io
@@ -6,6 +7,7 @@ import boto3
 import base64
 import urllib.parse
 import json
+from itertools import chain, islice, zip_longest
 
 import pickle
 
@@ -22,9 +24,10 @@ def get_args():
     args.add_argument("--url", default="http://localhost:3000")
     args.add_argument("-p", "--prolific-code")
     args.add_argument("-r", "--prolific-rejection-code")
-    args.add_argument("-o", "--output")
-    args.add_argument("--schedule-length", type=int, default=5)
-    args.add_argument("--limit", type=int)
+    args.add_argument("-s", "--prolific-study-id")
+    args.add_argument("-o", "--output", help="File to write the URLs to. If not provided, the URLs will be printed to the console.")
+    args.add_argument("--schedule-length", type=int, default=5, help="The number of annotations per URL.")
+    args.add_argument("--limit", type=int, help="The number of URLs to generate. The total number of annotations is limit * schedule_length.")
     args.add_argument("--blacklist", help="File containing object assets to blacklist")
     args.add_argument("categories", nargs="+")
     return args.parse_args()
@@ -59,7 +62,7 @@ def main():
     else:
         blacklist = set()
 
-    params = []
+    category_params: dict[str, list[dict[str, str]]] = defaultdict(list)
     for category in args.categories:
         for obj_id, grasps in skeleton[category].items():
             for grasp_id in grasps:
@@ -70,10 +73,16 @@ def main():
                     "object_id": obj_id,
                     "grasp_id": grasp_id
                 }
-                params.append(p)
-    random.shuffle(params)
-    if args.limit:
-        params = params[:args.limit * args.schedule_length]
+                category_params[category].append(p)
+
+    for params in category_params.values():
+        random.shuffle(params)
+    params_list = list(category_params.values())
+    random.shuffle(params_list)
+
+    limit = args.limit * args.schedule_length if args.limit else None
+    # takes one from each category in a round-robin fashion until the limit is reached, or all categories are exhausted
+    params = list(islice(filter(lambda x: x is not None, chain.from_iterable(zip_longest(*params_list))), limit))
 
     urls = []
     for i in range(0, len(params), args.schedule_length):
@@ -90,6 +99,8 @@ def main():
                 url += f"&prolific_rejection_code={args.prolific_rejection_code}"
         else:
             url += "&oneshot=true"
+        if args.prolific_study_id:
+            url += f"&study_id={args.prolific_study_id}"
         urls.append(url)
 
     if args.output:
