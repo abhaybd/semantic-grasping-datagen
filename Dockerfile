@@ -23,10 +23,10 @@ FROM python:3.11
 WORKDIR /app
 
 # Copy the requirements file
-COPY requirements.txt .
+COPY annotation_requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r annotation_requirements.txt
 
 COPY setup.py .
 COPY README.md .
@@ -35,7 +35,8 @@ COPY README.md .
 COPY --from=build /app/data_annotation/build ./data_annotation/build
 
 # Copy the rest of the application code
-COPY . .
+COPY semantic_grasping_datagen ./semantic_grasping_datagen
+COPY categories.txt ./categories.txt
 RUN mkdir -p annotations
 RUN chmod -R a+rw annotations
 
