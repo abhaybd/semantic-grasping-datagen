@@ -6,10 +6,9 @@ import glob
 import csv
 
 from tqdm import tqdm
-import torch
 import numpy as np
 
-from grasp_desc_encoder import GraspDescriptionEncoder
+from semantic_grasping_datagen.grasp_desc_encoder import GraspDescriptionEncoder
 
 def get_args():
     parser = argparse.ArgumentParser()
