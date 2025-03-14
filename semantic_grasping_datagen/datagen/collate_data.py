@@ -1,6 +1,7 @@
 import argparse
 from collections import defaultdict
 import os
+import re
 import yaml
 import glob
 import csv
@@ -44,7 +45,9 @@ def main():
                 annotation = yaml.safe_load(f)
 
             annot_id = annotation["annotation_id"]
-            annot_desc = annotation["annotation"]
+            # annot_desc = annotation["annotation"]
+            obj_name = " ".join(s.lower() for s in re.split(r"(?<!^)(?=[A-Z])", annot_id.split("_", 1)[0]))
+            annot = f"The grasp is on the {obj_name}"
             grasp_path = os.path.relpath(annotation_path.replace("annot.yaml", "grasp_pose.npy"), args.observation_dir)
             assert os.path.isfile(os.path.join(args.observation_dir, grasp_path)), f"File {grasp_path} does not exist"
 
@@ -54,8 +57,8 @@ def main():
             assert os.path.isfile(os.path.join(args.observation_dir, rgb_path)), f"File {rgb_path} does not exist"
             assert os.path.isfile(os.path.join(args.observation_dir, xyz_path)), f"File {xyz_path} does not exist"
 
-            writer.writerow([annot_id, annot_desc, rgb_path, xyz_path, grasp_path])
-            texts.append(annot_desc)
+            writer.writerow([annot_id, annot, rgb_path, xyz_path, grasp_path])
+            texts.append(annot)
 
     print("Embedding texts...")
     unique_text_idxs = defaultdict(list)
