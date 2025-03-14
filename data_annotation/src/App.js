@@ -42,7 +42,7 @@ function App() {
           <Route path="/done" element={<Done />} />
           <Route path="/reference" element={<Reference />} />
           <Route path="/404" element={<NotFound />} />
-          <Route path="/eval" element={<Eval />} />
+          {process.env.NODE_ENV === "development" && <Route path="/eval" element={<Eval />} />}
           <Route path="*" element={<Navigate to="/404" />} />
         </Routes>
       </main>

@@ -5,7 +5,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { Suspense } from 'react';
 import './Eval.css';
 
-const SceneViewer = ({ sceneId, orbitControlsRef, showPred }) => {
+const SceneViewer = ({ sceneId, orbitControlsRef, renderKey }) => {
   const GLTFMesh = ({ meshURL }) => {
     const gltf = useLoader(GLTFLoader, meshURL);
     return <primitive object={gltf.scene} />;
@@ -22,7 +22,7 @@ const SceneViewer = ({ sceneId, orbitControlsRef, showPred }) => {
               <Environment preset="sunset" />
               <OrbitControls ref={orbitControlsRef} />
               <GLTFMesh
-                meshURL={`/api/get-scene/${sceneId}/${showPred}`}
+                meshURL={`/api/get-scene/${sceneId}/${renderKey}`}
               />
             </Canvas>
           </Suspense>
@@ -38,7 +38,7 @@ const SceneViewer = ({ sceneId, orbitControlsRef, showPred }) => {
 
 const Eval = () => {
   const [sceneId, setSceneId] = useState(null);
-  const [showPred, setShowPred] = useState(false);
+  const [renderKey, setRenderKey] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const textInputRef = useRef(null);
@@ -59,7 +59,7 @@ const Eval = () => {
       
       const newSceneId = JSON.parse(await response.text());
       setSceneId(newSceneId);
-      setShowPred(false);
+      setRenderKey(0);
     } catch (err) {
       setError('Failed to generate scene: ' + err.message);
     } finally {
@@ -81,7 +81,6 @@ const Eval = () => {
         throw new Error('Camera state not available');
       }
 
-      console.log(cameraState);
       const camPos = [cameraState.position.x, cameraState.position.y, cameraState.position.z];
       const camQuat = [cameraState.quaternion.x, cameraState.quaternion.y, cameraState.quaternion.z, cameraState.quaternion.w];
 
@@ -104,7 +103,7 @@ const Eval = () => {
         throw new Error('Prediction failed');
       }
 
-      setShowPred(true);
+      setRenderKey(k => k + 1);
     } catch (err) {
       setError('Prediction failed: ' + err.message);
     } finally {
@@ -146,7 +145,7 @@ const Eval = () => {
           <SceneViewer
             sceneId={sceneId}
             orbitControlsRef={orbitControlsRef}
-            showPred={showPred}
+            renderKey={renderKey}
           />
         )}
       </div>
