@@ -137,7 +137,11 @@ def render(out_dir: str, scene_dir: str):
                 with open(f"{obs_dir}/annot.yaml", "w") as f:
                     yaml.dump({
                         "annotation_id": annot_id,
-                        "annotation": annot.grasp_description
+                        "grasp_description": annot.grasp_description,
+                        "object_description": annot.obj_description,
+                        "object_category": annot.obj.object_category,
+                        "object_id": annot.obj.object_id,
+                        "grasp_id": annot.grasp_id
                     }, f)
 
 class DummyExecutor:
