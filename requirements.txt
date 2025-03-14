@@ -1,5 +1,6 @@
 acronym_tools @ git+https://github.com/abhaybd/acronym.git
 nv_embed_v2 @ git+https://github.com/abhaybd/NV-Embed-v2_fixed.git
+transformers @ git+https://github.com/huggingface/transformers@159445d044623a4eba23ceb96dc7bd5bda51aa1a
 
 boto3~=1.36.17
 fastapi~=0.115.7
@@ -22,4 +23,3 @@ hydra-core~=1.3.2
 torch~=2.5.0
 einops~=0.8.1
 datasets~=3.3.2
-transformers~=4.42.4
