@@ -23,7 +23,7 @@ import yaml
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-from datagen_utils import (
+from .datagen_utils import (
     kelvin_to_rgb,
     MeshLibrary,
     look_at_rot,
@@ -74,8 +74,6 @@ SUPPORT_CATEGORIES = [
     "Table"
 ]
 
-ALL_OBJECT_CATEGORIES = open("all_categories.txt").read().splitlines()
-
 GRASP_LOCAL_POINTS = np.array([
     [0.041, 0, 0.066],
     [0.041, 0, 0.112],
@@ -84,7 +82,9 @@ GRASP_LOCAL_POINTS = np.array([
     [-0.041, 0, 0.066]
 ])
 
-with open("data/wall_colors.json", "r") as f:
+DATA_ROOT = os.path.join(os.path.dirname(__file__), "../../data")
+
+with open(os.path.join(DATA_ROOT, "wall_colors.json"), "r") as f:
     WALL_COLORS = json.load(f)
 
 def homogenize(arr: np.ndarray):
@@ -119,7 +119,7 @@ def generate_floor_and_walls(scene: ss.Scene, datagen_cfg: DatagenConfig):
 
     floor_plane = create_plane(width+0.2, depth+0.2, center, (0, 0, 1))
     uv = np.array([[0,0], [1,0], [0,1], [1,1]]) * np.array([width, depth])
-    texture = Image.open(f"data/floor_textures/{np.random.choice(os.listdir('data/floor_textures'))}")
+    texture = Image.open(os.path.join(DATA_ROOT, "floor_textures", np.random.choice(os.listdir(os.path.join(DATA_ROOT, "floor_textures")))))
     floor_plane.visual = trimesh.visual.TextureVisuals(
         uv=uv,
         image=texture
@@ -446,7 +446,8 @@ def procgen_init(data_dir: str, blacklist: set[str]):
 
     globals()["annotations"] = annotations
     globals()["object_library"] = MeshLibrary(data_dir, annotated_instances)
-    background_categories = [cat for cat in ALL_OBJECT_CATEGORIES if cat not in annotated_instances]
+    all_object_categories = open("all_categories.txt").read().splitlines()
+    background_categories = [cat for cat in all_object_categories if cat not in annotated_instances]
     globals()["background_library"] = MeshLibrary.from_categories(data_dir, background_categories)
     globals()["support_library"] = MeshLibrary.from_categories(data_dir, SUPPORT_CATEGORIES, load_kwargs={"scale": 0.025})
 

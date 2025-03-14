@@ -10,14 +10,21 @@ class GraspDescriptionEncoder(nn.Module):
 
     def __init__(self, device: str = "cpu", full_precision: bool = False):
         super().__init__()
-        kwargs = {"torch_dtype": "bfloat16"} if full_precision else {}
-        self.nv_embed = NVEmbedModel.from_pretrained("nvidia/NV-Embed-v2", map_location=device, **kwargs)
+        self.device = torch.device(device)
+        kwargs = {"torch_dtype": "bfloat16"} if not full_precision else {}
+        self.nv_embed = NVEmbedModel.from_pretrained("nvidia/NV-Embed-v2", device_map=device, **kwargs)
         self.nv_embed.eval()
 
+    def to(self, device):
+        if isinstance(device, str):
+            device = torch.device(device)
+        self.device = device
+        self.nv_embed.to(device)
+
     @torch.no_grad()
-    @torch.autocast("cuda", dtype=torch.bfloat16)
     def forward(self, descriptions: list[str]):
-        return self.nv_embed.encode(descriptions, instruction=self.QUERY_PFX, max_length=self.MAX_LENGTH)
+        with torch.autocast(self.device.type, dtype=torch.bfloat16):
+            return self.nv_embed.encode(descriptions, instruction=self.QUERY_PFX, max_length=self.MAX_LENGTH)
 
     def encode(self, descriptions: list[str]) -> np.ndarray:
         return self(descriptions).cpu().numpy()
