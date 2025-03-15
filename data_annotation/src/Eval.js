@@ -49,7 +49,7 @@ const Eval = () => {
       setLoading(true);
       setError(null);
       
-      const response = await fetch('/api/generate-scene', {
+      const response = await fetch('/api/generate-scene/100', {
         method: 'POST',
       });
       
