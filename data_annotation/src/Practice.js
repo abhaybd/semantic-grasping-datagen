@@ -263,6 +263,7 @@ const Practice = () => {
       <p>
         Please read the tutorial closely before answering the following practice questions.
         Getting too many questions wrong will result in a request for your submission to be returned.
+        Although you can try multiple answers, <b>only the first submitted answer will be recorded and graded.</b>
       </p>
       <p>
         Which of the following would be the most appropriate grasp description for this image?

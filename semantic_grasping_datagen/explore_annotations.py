@@ -1,3 +1,4 @@
+import io
 import os
 import json
 from tempfile import TemporaryDirectory
@@ -11,11 +12,13 @@ import numpy as np
 from tqdm import tqdm
 
 from acronym_tools import create_gripper_marker
-from annotation import Annotation, GraspLabel
+from annotation import Annotation, GraspLabel, PracticeResult
+from semantic_grasping_datagen.utils import list_s3_files
 
 s3 = boto3.client("s3")
 BUCKET_NAME = "prior-datasets"
 DATA_PREFIX = "semantic-grasping/acronym/"
+PRACTICE_PREFIX = "semantic-grasping/practice-results/"
 
 def download_annotations(local_dir: str, annotation_prefix: str):
     if not os.path.exists(local_dir):
@@ -126,6 +129,20 @@ def visualize_annotation(annotation: Annotation):
     except AttributeError:
         pass
 
+def print_practice_results(user_id: str):
+    practice_result_files = list_s3_files(s3, BUCKET_NAME, PRACTICE_PREFIX)
+    for file in practice_result_files:
+        if user_id in file:
+            file_bytes = io.BytesIO()
+            s3.download_fileobj(BUCKET_NAME, file, file_bytes)
+            practice_result = PracticeResult.model_validate_json(file_bytes.getvalue())
+            print(f"Study ID: {practice_result.study_id}")
+            print(f"\tTimestamp: {practice_result.timestamp}")
+            print(f"\tTotal time: {practice_result.total_time:.2f} sec")
+            print(f"\tQuestion results:")
+            for q in practice_result.question_results:
+                print(f"\t\tQuestion {q.question_idx}: {q.correct} ({q.time_taken:.2f} sec)")
+
 if __name__ == "__main__":
     import argparse
 
@@ -136,6 +153,7 @@ if __name__ == "__main__":
     parser.add_argument("-u", "--viz-uzer", help="Visualize all annotations from a specific user.")
     parser.add_argument("--filtered", action="store_true", help="Use filtered annotations.")
     parser.add_argument("--user-hist", action="store_true")
+    parser.add_argument("-p", "--practice-results", help="See practice results for a user.")
     args = parser.parse_args()
 
     local_dir = "annotations_filtered" if args.filtered else "annotations"
@@ -173,3 +191,6 @@ if __name__ == "__main__":
         plt.xticks(rotation=45, ha='right')
         plt.tight_layout(pad=0)
         plt.show()
+
+    if args.practice_results:
+        print_practice_results(args.practice_results)
