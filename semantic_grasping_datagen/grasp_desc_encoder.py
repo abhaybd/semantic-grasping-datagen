@@ -22,9 +22,10 @@ class GraspDescriptionEncoder(nn.Module):
         self.nv_embed.to(device)
 
     @torch.no_grad()
-    def forward(self, descriptions: list[str]):
+    def forward(self, descriptions: list[str], is_query: bool = False):
+        instructions = self.QUERY_PFX if is_query else ""
         with torch.autocast(self.device.type, dtype=torch.bfloat16):
-            return self.nv_embed.encode(descriptions, instruction=self.QUERY_PFX, max_length=self.MAX_LENGTH)
+            return self.nv_embed.encode(descriptions, instruction=instructions, max_length=self.MAX_LENGTH)
 
-    def encode(self, descriptions: list[str]) -> np.ndarray:
-        return self(descriptions).cpu().numpy()
+    def encode(self, descriptions: list[str], is_query: bool = False) -> np.ndarray:
+        return self(descriptions, is_query=is_query).cpu().numpy()
