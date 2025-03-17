@@ -23,7 +23,7 @@ import yaml
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-from .datagen_utils import (
+from semantic_grasping_datagen.datagen.datagen_utils import (
     kelvin_to_rgb,
     MeshLibrary,
     look_at_rot,
