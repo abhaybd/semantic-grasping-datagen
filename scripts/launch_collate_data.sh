@@ -1,5 +1,5 @@
 gantry run --budget ai2/prior -w ai2/abhayd \
-    --dataset abhayd/obsgen_0311_1420:/data \
+    --dataset abhayd/obsgen_0317_1735:/data \
     --gpus 1 \
     --beaker-image ai2/cuda11.8-ubuntu20.04 \
     --priority normal \
