@@ -39,11 +39,13 @@ def get_unapproved_participants(token: str, study: str):
     )
     if response.ok:
         submissions = response.json()
-        ret = []
+        participants = []
+        submission_ids = []
         for submission in submissions["results"]:
             if submission["status"] == "AWAITING REVIEW":
-                ret.append(submission["participant_id"])
-        return ret
+                participants.append(submission["participant_id"])
+                submission_ids.append(submission["id"])
+        return participants, submission_ids
     else:
         raise Exception(f"Failed to retrieve submissions: {response.status_code} {response.text}")
 
@@ -82,6 +84,15 @@ def send_message(token: str, study: str, participant_id: str, message: str):
     if not response.ok:
         raise Exception(f"Failed to send message: {response.status_code} {response.text}")
 
+def request_return(token: str, submission_id: str, message: str):
+    response = requests.post(
+        f"https://api.prolific.com/api/v1/submissions/{submission_id}/request-return/",
+        headers={"Authorization": f"Token {token}"},
+        json={"request_return_reasons": [message]}
+    )
+    if not response.ok:
+        raise Exception(f"Failed to request return: {response.status_code} {response.text}")
+
 def main():
     args = get_args()
     prolific_token = os.getenv("PROLIFIC_TOKEN")
@@ -89,9 +100,9 @@ def main():
     s3 = boto3.client("s3")
 
     submission_code = get_submission_code(prolific_token, args.study)
-    unapproved_participants = get_unapproved_participants(prolific_token, args.study)
+    unapproved_participants, submission_ids = get_unapproved_participants(prolific_token, args.study)
 
-    for participant in unapproved_participants:
+    for participant, submission_id in zip(unapproved_participants, submission_ids):
         wrong_qs = did_participant_fail(s3, submission_code, participant)
         if len(wrong_qs) <= 1:
             print(f"WARN: Participant {participant} is unapproved but hasn't failed. Skipping.")
@@ -102,12 +113,10 @@ def main():
         elif len(wrong_qs) == 2:
             ordinals = ["first", "second", "third"]
             q_text = "the " + " and ".join(ordinals[i] for i in wrong_qs)
-        message = f"I see in my logs that you answered {q_text} practice questions incorrectly (note that the first answer is the one that's graded, even if you resubmit), which constitutes a failed comprehension check. Could you return your submission?"
-
+        message = f"Answered {q_text} questions incorrectly, which constitutes a failed attention check. Note that the first answer is the one that's graded, even if you resubmit."
         if not already_messaged(prolific_token, participant):
             print(f"Messaging {participant}, who failed {len(wrong_qs)} questions.")
-            # TODO: use the request return endpoint instead of just sending a message
-            send_message(prolific_token, args.study, participant, message)
+            request_return(prolific_token, submission_id, message)
         else:
             print(f"Already messaged {participant}, skipping.")
 
