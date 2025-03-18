@@ -1,5 +1,7 @@
+DATASET_NAME=datagen_0317_1502
+
 gantry run --budget ai2/prior -w ai2/abhayd \
-    --dataset abhayd/datagen_0310_1527:/data \
+    --dataset abhayd/${DATASET_NAME}:/data \
     --gpus 1 \
     --beaker-image ai2/cuda11.8-ubuntu20.04 \
     --priority normal \

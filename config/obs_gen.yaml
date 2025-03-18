@@ -1,5 +1,5 @@
 scene_dir: "/data/scenes"
 out_dir: "/results/observations"
 n_proc: 16
-n_scenes: 1000
+n_scenes: 3000
 img_size: [480, 640]  # (height, width)
