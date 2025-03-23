@@ -5,6 +5,7 @@ import re
 import yaml
 import glob
 import csv
+from pathlib import Path
 
 from tqdm import tqdm
 import numpy as np
@@ -15,6 +16,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("observation_dir", type=str)
     parser.add_argument("out_dir", type=str)
+    parser.add_argument("--object-names", action="store_true", help="Simpler task, only use object names instead of grasp descriptions")
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--full-precision", action="store_true")
     return parser.parse_args()
@@ -34,7 +36,7 @@ def main():
     dataset_path = os.path.join(args.out_dir, "dataset.csv")
     with open(dataset_path, "w", newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(["annotation_id", "text", "rgb_path", "xyz_path", "grasp_pose_path"])  # Write header
+        writer.writerow(["annotation_id", "scene_id", "view_id", "text", "rgb_path", "xyz_path", "grasp_pose_path"])  # Write header
 
         for annotation_path in tqdm(
             glob.glob(os.path.join(args.observation_dir, "**/annot.yaml"), recursive=True),
@@ -43,10 +45,17 @@ def main():
             with open(annotation_path, "r") as f:
                 annotation = yaml.safe_load(f)
 
+            path_parts = Path(annotation_path).parts
+            scene_id = path_parts[-4]
+            view_id = path_parts[-3]
+
             annot_id = annotation["annotation_id"]
-            # annot_desc = annotation["annotation"]
-            obj_name = " ".join(s.lower() for s in re.split(r"(?<!^)(?=[A-Z])", annot_id.split("_", 1)[0]))
-            annot = f"The grasp is on the {obj_name}"
+            object_category = annotation["object_category"]
+            obj_name = " ".join(s.lower() for s in re.split(r"(?<!^)(?=[A-Z])", object_category))
+            if args.object_names:
+                annot = f"The grasp is on the {obj_name}."
+            else:
+                annot = f"The grasp is on the {obj_name}. " + annotation["grasp_description"]
             grasp_path = os.path.relpath(annotation_path.replace("annot.yaml", "grasp_pose.npy"), args.observation_dir)
             assert os.path.isfile(os.path.join(args.observation_dir, grasp_path)), f"File {grasp_path} does not exist"
 
@@ -56,7 +65,7 @@ def main():
             assert os.path.isfile(os.path.join(args.observation_dir, rgb_path)), f"File {rgb_path} does not exist"
             assert os.path.isfile(os.path.join(args.observation_dir, xyz_path)), f"File {xyz_path} does not exist"
 
-            writer.writerow([annot_id, annot, rgb_path, xyz_path, grasp_path])
+            writer.writerow([annot_id, scene_id, view_id, annot, rgb_path, xyz_path, grasp_path])
             texts.append(annot)
 
     print("Embedding texts...")
