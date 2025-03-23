@@ -6,50 +6,37 @@ import re
 
 import h5py
 import boto3
+from types_boto3_s3.client import S3Client
 import matplotlib.pyplot as plt
 import trimesh
 import numpy as np
 from tqdm import tqdm
 
 from acronym_tools import create_gripper_marker
-from annotation import Annotation, GraspLabel, PracticeResult
+
+from semantic_grasping_datagen.annotation import Annotation, GraspLabel, PracticeResult
 from semantic_grasping_datagen.utils import list_s3_files
 
-s3 = boto3.client("s3")
 BUCKET_NAME = "prior-datasets"
 DATA_PREFIX = "semantic-grasping/acronym/"
 PRACTICE_PREFIX = "semantic-grasping/practice-results/"
 
-def download_annotations(local_dir: str, annotation_prefix: str):
+def download_annotations(s3: S3Client, local_dir: str, annotation_prefix: str):
     if not os.path.exists(local_dir):
         os.makedirs(local_dir)
 
+    remote_files = list_s3_files(s3, BUCKET_NAME, annotation_prefix)
     files_to_download = []
-    continuation_token = None
-    while True:
-        list_kwargs = {"Bucket": BUCKET_NAME, "Prefix": annotation_prefix}
-        if continuation_token:
-            list_kwargs["ContinuationToken"] = continuation_token
-        response = s3.list_objects_v2(**list_kwargs)
-
-        if "Contents" in response:
-            for obj in response["Contents"]:
-                key = obj["Key"]
-                if key.endswith(".json"):
-                    local_path = os.path.join(local_dir, os.path.basename(key))
-                    if not os.path.exists(local_path):
-                        files_to_download.append((key, local_path))
-
-        if response.get("IsTruncated"):
-            continuation_token = response["NextContinuationToken"]
-        else:
-            break
+    for key in remote_files:
+        local_path = os.path.join(local_dir, os.path.basename(key))
+        if not os.path.exists(local_path):
+            files_to_download.append((key, local_path))
 
     for key, local_path in tqdm(files_to_download, desc="Downloading annotations", disable=len(files_to_download) == 0):
         s3.download_file(BUCKET_NAME, key, local_path)
 
 def process_annotations(local_dir: str):
-    annotations = []
+    annotations: list[Annotation] = []
     for filename in os.listdir(local_dir):
         if filename.endswith(".json"):
             with open(os.path.join(local_dir, filename), "r") as f:
@@ -60,6 +47,18 @@ def process_annotations(local_dir: str):
                 data = Annotation(**data)
                 annotations.append(data)
     return annotations
+
+def plot_object_distribution(annotations: list[Annotation]):
+    object_counts = {}
+    for annotation in annotations:
+        object_counts[annotation.obj.object_category] = object_counts.get(annotation.obj.object_category, 0) + 1
+    keys = sorted(object_counts.keys())
+    plt.bar(keys, [object_counts[k] for k in keys])
+    plt.xlabel("Object Category")
+    plt.ylabel("Count")
+    plt.title("Object Distribution")
+    plt.show()
+
 
 def plot_time_taken_histogram(annotations):
     times = [annotation.time_taken / 60 for annotation in annotations if annotation.time_taken >= 0]
@@ -74,7 +73,7 @@ def plot_time_taken_histogram(annotations):
     plt.legend()
     plt.show()
 
-def load_object_data(category: str, obj_id: str) -> tuple[trimesh.Scene, np.ndarray]:
+def load_object_data(s3: S3Client, category: str, obj_id: str) -> tuple[trimesh.Scene, np.ndarray]:
     datafile_key = f"{DATA_PREFIX}grasps/{category}_{obj_id}.h5"
     with TemporaryDirectory() as tmpdir:
         datafile_path = os.path.join(tmpdir, "data.h5")
@@ -117,9 +116,7 @@ def visualize_annotation(annotation: Annotation):
     print(f"\tObject Description: {annotation.obj_description}")
     print(f"\tGrasp Description: {annotation.grasp_description}")
 
-    load_object_data(annotation.obj.object_category, annotation.obj.object_id)
-
-    scene, T = load_object_data(annotation.obj.object_category, annotation.obj.object_id)
+    scene, T = load_object_data(s3, annotation.obj.object_category, annotation.obj.object_id)
     gripper_marker = create_gripper_marker(color=[0, 255, 0]).apply_transform(T[annotation.grasp_id])
     gripper_marker.apply_translation(-scene.centroid)
     scene.apply_translation(-scene.centroid)
@@ -129,7 +126,7 @@ def visualize_annotation(annotation: Annotation):
     except AttributeError:
         pass
 
-def print_practice_results(user_id: str):
+def print_practice_results(s3: S3Client, user_id: str):
     practice_result_files = list_s3_files(s3, BUCKET_NAME, PRACTICE_PREFIX)
     for file in practice_result_files:
         if user_id in file:
@@ -147,7 +144,8 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Explore and visualize annotations.")
-    parser.add_argument("--plot", action="store_true", help="Plot histogram of time taken.")
+    parser.add_argument("--plot-time-dist", action="store_true", help="Plot histogram of time taken.")
+    parser.add_argument("--plot-object-dist", action="store_true", help="Plot histogram of object distribution.")
     parser.add_argument("-v", "--visualize", nargs=3, metavar=("CATEGORY", "OBJ_ID", "GRASP_ID"), help="Visualize a specific observation.")
     parser.add_argument("-r", "--random-viz", action="store_true", help="Visualize a random observation.")
     parser.add_argument("-u", "--viz-uzer", help="Visualize all annotations from a specific user.")
@@ -156,17 +154,22 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--practice-results", help="See practice results for a user.")
     args = parser.parse_args()
 
+    s3 = boto3.client("s3")
+
     local_dir = "annotations_filtered" if args.filtered else "annotations"
     prefix = "semantic-grasping/annotations-filtered" if args.filtered else "semantic-grasping/annotations"
 
-    download_annotations(local_dir, prefix)
+    download_annotations(s3, local_dir, prefix)
 
     annotations = process_annotations(local_dir)
 
     print(f"Loaded {len(annotations)} annotations.")
 
-    if args.plot:
+    if args.plot_time_dist:
         plot_time_taken_histogram(annotations)
+
+    if args.plot_object_dist:
+        plot_object_distribution(annotations)
 
     if args.visualize:
         category, obj_id, grasp_id = args.visualize
@@ -193,4 +196,4 @@ if __name__ == "__main__":
         plt.show()
 
     if args.practice_results:
-        print_practice_results(args.practice_results)
+        print_practice_results(s3, args.practice_results)

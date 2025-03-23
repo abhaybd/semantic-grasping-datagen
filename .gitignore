@@ -1,5 +1,6 @@
 data/
 annotations/
+annotations_filtered/
 !data/franka_gripper_collision_mesh.stl
 
 .DS_Store
