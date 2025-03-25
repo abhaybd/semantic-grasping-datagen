@@ -11,4 +11,4 @@ gantry run --budget ai2/prior -w ai2/abhayd \
     --cluster ai2/ceres-cirrascale \
     --cluster ai2/prior-elanding \
     -- \
-    python semantic_grasping_datagen/datagen/collate_data.py /data /results --batch_size 32
+    python semantic_grasping_datagen/datagen/collate_data.py /data/observations /results --annot-type full

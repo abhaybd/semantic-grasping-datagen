@@ -9,6 +9,7 @@ from base64 import b64decode
 from contextlib import contextmanager
 import signal
 
+import h5py
 import hydra
 from omegaconf import DictConfig
 import yaml
@@ -92,8 +93,8 @@ def backproject(cam_K: np.ndarray, depth: np.ndarray):
 
 def render(out_dir: str, scene_dir: str):
     scene_id = os.path.basename(scene_dir)
-    if os.path.isdir(f"{out_dir}/{scene_id}"):
-        # if one observation was generated, assume all were
+    out_scene_file = f"{out_dir}/{scene_id}.hdf5"
+    if os.path.isfile(out_scene_file):
         print(f"Skipping {scene_id} because it already has observations")
         return
 
@@ -125,24 +126,30 @@ def render(out_dir: str, scene_dir: str):
         view_observations.append(observations)
 
     with block_signals([signal.SIGINT]):
-        for view_idx, (rgb, xyz, observations) in enumerate(zip(view_rgb, view_xyz, view_observations)):
-            view_dir = f"{out_dir}/{scene_id}/view_{view_idx}"
-            os.makedirs(view_dir, exist_ok=True)
-            Image.fromarray(rgb).save(f"{view_dir}/rgb.png")
-            np.save(f"{view_dir}/xyz.npy", xyz)
-            for obs_idx, (grasp_pose, annot, annot_id) in enumerate(observations):
-                obs_dir = f"{view_dir}/obs_{obs_idx}"
-                os.makedirs(obs_dir, exist_ok=True)
-                np.save(f"{obs_dir}/grasp_pose.npy", grasp_pose)
-                with open(f"{obs_dir}/annot.yaml", "w") as f:
-                    yaml.dump({
+        with h5py.File(out_scene_file, "w") as f:
+            for view_idx, (rgb, xyz, observations) in enumerate(zip(view_rgb, view_xyz, view_observations)):
+                view_group = f.create_group(f"view_{view_idx}")
+
+                rgb_ds = view_group.create_dataset("rgb", data=rgb, compression="gzip")
+                rgb_ds.attrs['CLASS'] = np.string_('IMAGE')
+                rgb_ds.attrs['IMAGE_VERSION'] = np.string_('1.2')
+                rgb_ds.attrs['IMAGE_SUBCLASS'] = np.string_('IMAGE_TRUECOLOR')
+                rgb_ds.attrs['INTERLACE_MODE'] = np.string_('INTERLACE_PIXEL')
+
+                view_group.create_dataset("xyz", data=xyz, compression="gzip")
+
+                for obs_idx, (grasp_pose, annot, annot_id) in enumerate(observations):
+                    obs_group = view_group.create_group(f"obs_{obs_idx}")
+                    obs_group.create_dataset("grasp_pose", data=grasp_pose, compression="gzip")
+                    annot_str = yaml.dump({
                         "annotation_id": annot_id,
                         "grasp_description": annot.grasp_description,
                         "object_description": annot.obj_description,
                         "object_category": annot.obj.object_category,
                         "object_id": annot.obj.object_id,
                         "grasp_id": annot.grasp_id
-                    }, f)
+                    })
+                    obs_group.create_dataset("annot", data=annot_str.encode("utf-8"))
 
 class DummyExecutor:
     def __init__(self, initializer, initargs, **kwargs):
@@ -169,7 +176,7 @@ def main(cfg: DictConfig):
     ) as executor:
         while True:
             scenes: set[str] = set(fn for fn in os.listdir(in_dir) if os.path.isdir(f"{in_dir}/{fn}"))
-            processed_scenes: set[str] = set(fn for fn in os.listdir(out_dir) if os.path.isdir(f"{out_dir}/{fn}"))
+            processed_scenes: set[str] = set(fn.split(".")[0] for fn in os.listdir(out_dir) if fn.endswith(".hdf5"))
             print(f"Total generated observations: {len(processed_scenes)}")
 
             if "n_scenes" in cfg and len(processed_scenes) >= cfg["n_scenes"]:

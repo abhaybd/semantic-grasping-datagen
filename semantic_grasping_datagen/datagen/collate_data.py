@@ -2,12 +2,11 @@ import argparse
 from collections import defaultdict
 import os
 import re
-import yaml
-import glob
 import csv
-from pathlib import Path
 
+import yaml
 from tqdm import tqdm
+import h5py
 import numpy as np
 
 from semantic_grasping_datagen.grasp_desc_encoder import GraspDescriptionEncoder
@@ -16,7 +15,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("observation_dir", type=str)
     parser.add_argument("out_dir", type=str)
-    parser.add_argument("--object-names", action="store_true", help="Simpler task, only use object names instead of grasp descriptions")
+    parser.add_argument("--annot-type", type=str, default="full", choices=["objectnames", "grasp_description", "full"])
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--full-precision", action="store_true")
     return parser.parse_args()
@@ -32,41 +31,44 @@ def embed_texts(batch_size: int, texts: list[str], full_precision: bool = False)
 def main():
     args = get_args()
 
+    os.makedirs(args.out_dir, exist_ok=True)
+
     texts = []
     dataset_path = os.path.join(args.out_dir, "dataset.csv")
     with open(dataset_path, "w", newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(["annotation_id", "scene_id", "view_id", "text", "rgb_path", "xyz_path", "grasp_pose_path"])  # Write header
+        writer.writerow(["scene_path", "annotation_id", "scene_id", "view_id", "rgb_key", "xyz_key", "annot_key", "grasp_pose_key", "annot"])
 
-        for annotation_path in tqdm(
-            glob.glob(os.path.join(args.observation_dir, "**/annot.yaml"), recursive=True),
-            desc="Collating annotations"
-        ):
-            with open(annotation_path, "r") as f:
-                annotation = yaml.safe_load(f)
+        for scene_file in tqdm(os.listdir(args.observation_dir), desc="Processing scenes"):
+            if not scene_file.endswith(".hdf5"):
+                continue
 
-            path_parts = Path(annotation_path).parts
-            scene_id = path_parts[-4]
-            view_id = path_parts[-3]
+            scene_id = scene_file.split(".")[0]
+            with h5py.File(os.path.join(args.observation_dir, scene_file), "r") as f:
+                for view_id in f.keys():
+                    rgb_key = f"{view_id}/rgb"
+                    xyz_key = f"{view_id}/xyz"
+                    for obs_id in f[view_id].keys():
+                        if not obs_id.startswith("obs_"):
+                            continue
+                        annotation = yaml.safe_load(f[view_id][obs_id]["annot"][()])
+                        grasp_pose_key = f"{view_id}/{obs_id}/grasp_pose"
+                        annot_key = f"{view_id}/{obs_id}/annot"
 
-            annot_id = annotation["annotation_id"]
-            object_category = annotation["object_category"]
-            obj_name = " ".join(s.lower() for s in re.split(r"(?<!^)(?=[A-Z])", object_category))
-            if args.object_names:
-                annot = f"The grasp is on the {obj_name}."
-            else:
-                annot = f"The grasp is on the {obj_name}. " + annotation["grasp_description"]
-            grasp_path = os.path.relpath(annotation_path.replace("annot.yaml", "grasp_pose.npy"), args.observation_dir)
-            assert os.path.isfile(os.path.join(args.observation_dir, grasp_path)), f"File {grasp_path} does not exist"
+                        annot_id = annotation["annotation_id"]
+                        object_category = annotation["object_category"]
+                        obj_name = " ".join(s.lower() for s in re.split(r"(?<!^)(?=[A-Z])", object_category))
+                        if args.annot_type == "objectnames":
+                            annot = f"The grasp is on the {obj_name}."
+                        elif args.annot_type == "grasp_description":
+                            annot = annotation["grasp_description"]
+                        elif args.annot_type == "full":
+                            annot = f"The grasp is on the {obj_name}. " + annotation["grasp_description"]
+                        texts.append(annot)
 
-            par_dir = os.path.dirname(os.path.dirname(annotation_path))
-            rgb_path = os.path.relpath(os.path.join(par_dir, "rgb.png"), args.observation_dir)
-            xyz_path = os.path.relpath(os.path.join(par_dir, "xyz.npy"), args.observation_dir)
-            assert os.path.isfile(os.path.join(args.observation_dir, rgb_path)), f"File {rgb_path} does not exist"
-            assert os.path.isfile(os.path.join(args.observation_dir, xyz_path)), f"File {xyz_path} does not exist"
-
-            writer.writerow([annot_id, scene_id, view_id, annot, rgb_path, xyz_path, grasp_path])
-            texts.append(annot)
+                        for key in [rgb_key, xyz_key, annot_key, grasp_pose_key]:
+                            assert key in f, f"Key {key} not found in {scene_file}"
+                        writer.writerow([scene_file, annot_id, scene_id, view_id, rgb_key, xyz_key, annot_key, grasp_pose_key, annot])
 
     print("Embedding texts...")
     unique_text_idxs = defaultdict(list)
