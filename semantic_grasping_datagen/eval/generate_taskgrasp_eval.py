@@ -1,5 +1,7 @@
+import argparse
 import os
 import glob
+from typing import Any
 
 from PIL import Image
 import numpy as np
@@ -43,8 +45,15 @@ class TaskGraspScanLibrary:
 
     def __len__(self):
         return len(self.rgb_paths)
+
+    def get(self, object_id: str, scan_id: int):
+        for i, rgb_path in enumerate(self.rgb_paths):
+            dirname = os.path.dirname(rgb_path)
+            if os.path.basename(dirname) == object_id and os.path.basename(rgb_path).split("_", 1)[0] == scan_id:
+                return self[i]
+        raise ValueError(f"Scan {scan_id} not found")
     
-    def __getitem__(self, idx: int) -> tuple[str, tuple[Image.Image, np.ndarray, np.ndarray], np.ndarray]:
+    def __getitem__(self, idx: int) -> dict[str, Any]:
         """Returns (object_name, (rgb, depth, cam_params), fused_pc)"""
         dirname = os.path.dirname(self.rgb_paths[idx])
         object_id = os.path.basename(dirname)
@@ -66,11 +75,16 @@ class TaskGraspScanLibrary:
         fused_pc = np.load(os.path.join(dirname, "fused_pc_clean.npy"))
         fused_pc[:,:3] -= np.mean(fused_pc[:,:3], axis=0)
 
-        grasps = []
+        if os.path.exists(rgb_path[:-len("_color.png")] + "_registered_grasps.npy"):
+            registered_grasps = np.load(rgb_path[:-len("_color.png")] + "_registered_grasps.npy")
+        else:
+            registered_grasps = None
+
+        fused_grasps = []
         for grasp_dirname in sorted(os.listdir(os.path.join(dirname, "grasps")), key=int):
             grasp = np.load(os.path.join(dirname, "grasps", grasp_dirname, "grasp.npy"))
-            grasps.append(grasp)
-        grasps = np.array(grasps)
+            fused_grasps.append(grasp)
+        fused_grasps = np.array(fused_grasps)
 
         grasp_trf = np.array([
             [0, 0, 1, -0.09],
@@ -78,7 +92,7 @@ class TaskGraspScanLibrary:
             [0, -1, 0, 0],
             [0, 0, 0, 1],
         ])
-        grasps = grasps @ grasp_trf[None]
+        fused_grasps = fused_grasps @ grasp_trf[None]
 
         return {
             "object_id": object_id,
@@ -88,15 +102,28 @@ class TaskGraspScanLibrary:
             "depth": corr_depth,
             "cam_params": cam_params,
             "fused_pc": fused_pc,
-            "fused_grasps": grasps,
+            "fused_grasps": fused_grasps,
+            "registered_grasps": registered_grasps,
         }
 
     def __iter__(self):
         for idx in range(len(self)):
             yield self[idx]
 
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--scan-dir", type=str, default="/net/nfs2.prior/abhayd/semantic-grasping/data/taskgrasp/scans")
+    parser.add_argument("--gen-scene-dir", type=str)
+    parser.add_argument("--overwrite", action="store_true")
+    return parser.parse_args()
+
 def main():
-    scan_dir = "/net/nfs2.prior/abhayd/semantic-grasping/data/taskgrasp/scans"
+    args = get_args()
+    scan_dir = args.scan_dir
+    gen_scene_dir = args.gen_scene_dir
+    if gen_scene_dir is not None:
+        os.makedirs(gen_scene_dir, exist_ok=True)
+
     tg_library = TaskGraspScanLibrary(scan_dir)
     mask_detector = MaskDetector()
     pc_registration = CompositePCRegistration(
@@ -105,6 +132,9 @@ def main():
     )
 
     for elem in tqdm(tg_library):
+        out_file = os.path.join(scan_dir, elem["object_id"], f"{elem['scan_id']}_registered_grasps.npy")
+        if not args.overwrite and os.path.isfile(out_file):
+            continue
         object_mask = mask_detector.detect_mask(elem["object_name"], elem["rgb"])
         if object_mask is None:
             print(f"No mask detected for {elem['object_id']}_{elem['scan_id']}")
@@ -144,8 +174,9 @@ def main():
             marker.apply_transform(grasp)
             scene.add_geometry(marker)
         print(f"Registered {elem['object_id']}_{elem['scan_id']} with cost {cost}")
-        np.save(os.path.join(scan_dir, elem["object_id"], f"{elem['scan_id']}_registered_grasps.npy"), grasps)
-        scene.export(os.path.join("generated_plys", f"{elem['object_id']}_{elem['scan_id']}.glb"))
+        np.save(out_file, grasps)
+        if gen_scene_dir is not None:
+            scene.export(os.path.join(gen_scene_dir, f"{elem['object_id']}_{elem['scan_id']}.glb"))
 
 if __name__ == "__main__":
     main()

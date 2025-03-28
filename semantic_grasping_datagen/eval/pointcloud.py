@@ -107,11 +107,15 @@ class DeepGMRRegistration(PCRegistration):
         self.deepgmr.to(device)
 
     def register(self, template: np.ndarray, source: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
-        assert len(template) >= len(source)
-        template_idxs = np.random.choice(len(template), len(source), replace=False)
+        n_points = min(len(template), len(source))
+
+        template_idxs = np.random.choice(len(template), n_points, replace=False) if len(template) > n_points else np.arange(len(template))
+        source_idxs = np.random.choice(len(source), n_points, replace=False) if len(source) > n_points else np.arange(len(source))
         template_sampled = template[template_idxs]
+        source_sampled = source[source_idxs]
+
         template_torch = torch.from_numpy(process(template_sampled, self.n_neighbors)).unsqueeze(0).float().to(self.device)
-        source_torch = torch.from_numpy(process(source, self.n_neighbors)).unsqueeze(0).float().to(self.device)
+        source_torch = torch.from_numpy(process(source_sampled, self.n_neighbors)).unsqueeze(0).float().to(self.device)
 
         with torch.no_grad():
             output = self.deepgmr(template_torch, source_torch)
