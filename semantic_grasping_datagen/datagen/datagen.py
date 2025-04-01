@@ -6,6 +6,7 @@ import pickle
 import time
 import uuid
 import base64
+import shutil
 
 # pyrender spawns a lot of OMP threads, limiting to 1 significantly reduces overhead
 if os.environ.get("OMP_NUM_THREADS") is None:
@@ -477,22 +478,30 @@ def procgen_worker(datagen_cfg: DatagenConfig, out_dir: str):
             "objects": objects_in_scene,
         }, f)
 
+def fetch_annotations(hydra_cfg: DictConfig):
+    os.makedirs(ANNOTATIONS_DIR, exist_ok=True)
+    s3 = None
+    for source in hydra_cfg["annotation_sources"]:
+        match source["type"]:
+            case "s3":
+                if s3 is None:
+                    s3 = boto3.client("s3")
+                bucket_name = source["params"]["bucket_name"]
+                annot_prefix = source["params"]["annotation_prefix"]
+                annot_files = list_s3_files(s3, bucket_name, annot_prefix)
+                for annot_file in tqdm(annot_files, desc="Downloading annotations", disable=len(annot_files) == 0):
+                    s3.download_file(bucket_name, annot_file, f"{ANNOTATIONS_DIR}/{os.path.basename(annot_file)}")
+            case "directory":
+                annot_dir = source["params"]["dir"]
+                assert os.path.isdir(annot_dir), f"Annotation directory doesn't exist: {annot_dir}"
+                for annot_file in tqdm(os.listdir(annot_dir), desc="Copying annotations", disable=len(annot_dir) == 0):
+                    shutil.copy(f"{annot_dir}/{annot_file}", f"{ANNOTATIONS_DIR}/{annot_file}")
+            case _:
+                raise ValueError(f"Unknown annotation source type: {source['type']}")
+
 @hydra.main(version_base=None, config_path="../../config", config_name="scene_gen.yaml")
 def main(hydra_cfg: DictConfig):
-    s3 = boto3.client("s3")
-    bucket_name = hydra_cfg["s3"]["bucket_name"]
-    annot_files = list_s3_files(s3, bucket_name, hydra_cfg["s3"]["annotation_prefix"])
-    if os.path.isdir(ANNOTATIONS_DIR):
-        annot_files_set = set(annot_files)
-        existing_annots = set(f"semantic-grasping/annotations-filtered/{fn}" for fn in os.listdir(ANNOTATIONS_DIR) if fn.endswith(".json"))
-        for annot_file in existing_annots:
-            assert annot_file in annot_files_set, f"Annotation doesn't exist in server: {annot_file}"
-        annot_files = [annot_file for annot_file in annot_files if annot_file not in existing_annots]
-    else:
-        os.makedirs(ANNOTATIONS_DIR, exist_ok=True)
-    for annot_file in tqdm(annot_files, desc="Downloading annotations", disable=len(annot_files) == 0):
-        s3.download_file(bucket_name, annot_file, f"{ANNOTATIONS_DIR}/{os.path.basename(annot_file)}")
-
+    fetch_annotations(hydra_cfg)
 
     datagen_cfg = DatagenConfig(**OmegaConf.to_container(hydra_cfg["datagen"]))
 

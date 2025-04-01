@@ -3,13 +3,17 @@
 data_dir: "/assets"
 out_dir: "/results/scenes"
 n_proc: 16
-n_samples: 3000
+n_samples: 10000
 blacklist: "asset_blacklist.txt"
 
-s3:
-  bucket_name: "prior-datasets"
-  data_prefix: "semantic-grasping/acronym/"
-  annotation_prefix: "semantic-grasping/annotations-filtered/"
+annotation_sources:
+  # - type: s3
+  #   params:
+  #     bucket_name: "prior-datasets"
+  #     annotation_prefix: "semantic-grasping/annotations-filtered/"
+  - type: directory
+    params:
+      dir: /annotations
 
 datagen:
   # Room parameters

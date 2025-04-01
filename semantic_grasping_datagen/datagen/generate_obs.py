@@ -109,10 +109,20 @@ def render(out_dir: str, scene_dir: str):
     view_observations: list[list[tuple[np.ndarray, Annotation, str]]] = []
     view_rgb: list[np.ndarray] = []
     view_xyz: list[np.ndarray] = []
+    view_poses: list[np.ndarray] = []  # in standard camera axes conventions
     for view in scene_data["views"]:
         cam_K = np.array(view["cam_K"])
-        cam_pose = np.array(view["cam_pose"])
-        set_camera(scene, cam_K, cam_pose)
+        cam_pose_trimesh = np.array(view["cam_pose"])
+        set_camera(scene, cam_K, cam_pose_trimesh)
+
+        standard_to_trimesh_cam_trf = np.array([
+            [1, 0, 0, 0],
+            [0, -1, 0, 0],
+            [0, 0, -1, 0],
+            [0, 0, 0, 1]
+        ])
+        cam_pose_standard = cam_pose_trimesh @ standard_to_trimesh_cam_trf
+        view_poses.append(cam_pose_standard)
 
         color, depth = renderer.render(scene, flags=pyrender.RenderFlags.SHADOWS_DIRECTIONAL)
         xyz = backproject(cam_K, depth).astype(np.float32)
@@ -121,13 +131,13 @@ def render(out_dir: str, scene_dir: str):
         observations = []
         for annot_id in view["annotations_in_view"]:
             annot, grasp_pose = all_annotations[annot_id]
-            grasp_pose_in_cam_frame = np.linalg.solve(cam_pose, grasp_pose)
+            grasp_pose_in_cam_frame = np.linalg.solve(cam_pose_standard, grasp_pose)
             observations.append((grasp_pose_in_cam_frame, annot, annot_id))
         view_observations.append(observations)
 
     with block_signals([signal.SIGINT]):
         with h5py.File(out_scene_file, "w") as f:
-            for view_idx, (rgb, xyz, observations) in enumerate(zip(view_rgb, view_xyz, view_observations)):
+            for view_idx, (rgb, xyz, observations, view_pose) in enumerate(zip(view_rgb, view_xyz, view_observations, view_poses)):
                 view_group = f.create_group(f"view_{view_idx}")
 
                 rgb_ds = view_group.create_dataset("rgb", data=rgb, compression="gzip")
@@ -137,6 +147,7 @@ def render(out_dir: str, scene_dir: str):
                 rgb_ds.attrs['INTERLACE_MODE'] = np.string_('INTERLACE_PIXEL')
 
                 view_group.create_dataset("xyz", data=xyz, compression="gzip")
+                view_group.create_dataset("view_pose", data=view_pose, compression="gzip")
 
                 for obs_idx, (grasp_pose, annot, annot_id) in enumerate(observations):
                     obs_group = view_group.create_group(f"obs_{obs_idx}")
