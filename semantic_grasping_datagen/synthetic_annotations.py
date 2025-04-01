@@ -24,7 +24,7 @@ from acronym_tools import create_gripper_marker
 from semantic_grasping_datagen.annotation import Annotation, Object, GraspLabel
 from semantic_grasping_datagen.datagen.datagen_utils import construct_cam_K, MeshLibrary
 
-MAX_BATCH_SIZE = 200_000_000  # max batch size in bytes, from openai api
+MAX_BATCH_SIZE_BYTES = 200_000_000  # max batch size in bytes, from openai api
 
 GRIPPER_STYLE = "mesh"  # "mesh" or "marker"
 GRASP_VOLUME_STYLE = "box"  # "sphere" or "box"
@@ -278,7 +278,7 @@ def submit(args, client: OpenAI):
             # collage.save(f"tmp/{category}__{obj_id}__{grasp_idx}.png")
             query = create_query(category, obj_id, grasp_idx, collage)
             bytes_to_write = (json.dumps(query) + "\n").encode("utf-8")
-            if batch_files[-1].tell() + len(bytes_to_write) > MAX_BATCH_SIZE:
+            if batch_files[-1].tell() + len(bytes_to_write) > MAX_BATCH_SIZE_BYTES:
                 batch_files.append(io.BytesIO())
             batch_files[-1].write(bytes_to_write)
             total_annotations += 1
