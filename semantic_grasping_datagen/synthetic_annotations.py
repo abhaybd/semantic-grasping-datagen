@@ -262,8 +262,7 @@ def submit(args, client: OpenAI):
     cam_K = construct_cam_K(*args.resolution, dfov)
 
     batch_file = io.BytesIO()
-    from itertools import islice
-    for category, obj_id in islice(tqdm(asset_library), 10):
+    for category, obj_id in tqdm(asset_library):
         if f"{category}_{obj_id}" in blacklist:
             continue
         grasps, _ = asset_library.grasps(category, obj_id)
