@@ -24,6 +24,8 @@ from acronym_tools import create_gripper_marker
 from semantic_grasping_datagen.annotation import Annotation, Object, GraspLabel
 from semantic_grasping_datagen.datagen.datagen_utils import construct_cam_K, MeshLibrary
 
+MAX_BATCH_SIZE = 200_000_000  # max batch size in bytes, from openai api
+
 GRIPPER_STYLE = "mesh"  # "mesh" or "marker"
 GRASP_VOLUME_STYLE = "box"  # "sphere" or "box"
 
@@ -60,8 +62,8 @@ def get_args():
     submit_parser.set_defaults(func=submit)
 
     retrieve_parser = subparsers.add_parser("retrieve")
-    retrieve_parser.add_argument("batch_id")
     retrieve_parser.add_argument("out_dir")
+    retrieve_parser.add_argument("batch_ids", nargs="+")
     retrieve_parser.set_defaults(func=retrieve)
 
     return parser.parse_args()
@@ -261,7 +263,8 @@ def submit(args, client: OpenAI):
     dfov = 60.0
     cam_K = construct_cam_K(*args.resolution, dfov)
 
-    batch_file = io.BytesIO()
+    batch_files = [io.BytesIO()]
+    total_annotations = 0
     for category, obj_id in tqdm(asset_library):
         if f"{category}_{obj_id}" in blacklist:
             continue
@@ -274,32 +277,50 @@ def submit(args, client: OpenAI):
             collage = create_collage(views, *args.collage_size)
             # collage.save(f"tmp/{category}__{obj_id}__{grasp_idx}.png")
             query = create_query(category, obj_id, grasp_idx, collage)
-            batch_file.write((json.dumps(query) + "\n").encode("utf-8"))
-    batch_file.seek(0)
-    batch_file_id = client.files.create(file=batch_file, purpose="batch").id
-    batch = client.batches.create(input_file_id=batch_file_id, endpoint="/v1/chat/completions", completion_window="24h")
-    print(f"Submitted batch job with id: {batch.id}")
+            bytes_to_write = (json.dumps(query) + "\n").encode("utf-8")
+            if batch_files[-1].tell() + len(bytes_to_write) > MAX_BATCH_SIZE:
+                batch_files.append(io.BytesIO())
+            batch_files[-1].write(bytes_to_write)
+            total_annotations += 1
+    print(f"Total annotations: {total_annotations}")
+
+    batch_file_ids = []
+    for batch_file in batch_files:
+        batch_file.seek(0)
+        batch_file_id = client.files.create(file=batch_file, purpose="batch").id
+        batch_file_ids.append(batch_file_id)
+
+    batch_ids = []
+    for batch_file_id in batch_file_ids:
+        batch = client.batches.create(input_file_id=batch_file_id, endpoint="/v1/chat/completions", completion_window="24h")
+        batch_ids.append(batch.id)
+
+    print(f"Submitted {len(batch_ids)} batch job(s) with ID(s): {' '.join(batch_ids)}")
 
     if args.out_dir:
-        args.batch_id = batch.id
+        args.batch_ids = batch_ids
         retrieve(args, client)
 
 
 def retrieve(args, client: OpenAI):
     os.makedirs(args.out_dir, exist_ok=True)
     done_statuses = ["completed", "expired", "cancelled", "failed"]
-    time_to_wait = 5
-    while (batch := client.batches.retrieve(args.batch_id)).status not in done_statuses:
-        print(f"Batch job {args.batch_id} is {batch.status}, waiting {time_to_wait} seconds before checking again")
-        time.sleep(time_to_wait)
-        time_to_wait = min(time_to_wait * 2, 10 * 60)  # cap at 10 minutes
-    if batch.status != "completed":
-        print(f"Batch job {args.batch_id} did not complete successfully!")
-        return
-    batch_file = client.files.content(batch.output_file_id)
 
-    batch_file_lines = batch_file.content.decode("utf-8").splitlines()
-    for line in batch_file_lines:
+    results_lines = []
+    for batch_id in args.batch_ids:
+        time_to_wait = 5
+        while (batch := client.batches.retrieve(batch_id)).status not in done_statuses:
+            print(f"Batch job {batch_id} is {batch.status}, waiting {time_to_wait} seconds before checking again")
+            time.sleep(time_to_wait)
+            time_to_wait = min(time_to_wait * 2, 10 * 60)  # cap at 10 minutes
+        if batch.status != "completed":
+            raise ValueError(f"Batch job {batch_id} did not complete successfully!")
+
+        batch_file = client.files.content(batch.output_file_id)
+        batch_file_lines = batch_file.content.decode("utf-8").splitlines()
+        results_lines.extend(batch_file_lines)
+
+    for line in results_lines:
         result = json.loads(line)
         annot_id: str = result["custom_id"]
         grasp_description = result["response"]["body"]["choices"][0]["message"]["content"]
