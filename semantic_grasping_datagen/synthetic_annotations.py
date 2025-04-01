@@ -6,6 +6,12 @@ import json
 import argparse
 import time
 
+if os.environ.get("PYOPENGL_PLATFORM") is None:
+    os.environ["PYOPENGL_PLATFORM"] = "egl"
+# pyrender spawns a lot of OMP threads, limiting to 1 significantly reduces overhead
+if os.environ.get("OMP_NUM_THREADS") is None:
+    os.environ["OMP_NUM_THREADS"] = "1"
+
 import numpy as np
 import trimesh
 from PIL import Image, ImageDraw
