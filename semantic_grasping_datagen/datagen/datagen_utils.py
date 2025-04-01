@@ -7,6 +7,7 @@ from scipy.spatial.transform import Rotation as R
 import trimesh
 from multiprocessing import Event
 from itertools import count
+import h5py
 
 from acronym_tools import load_mesh, load_grasps
 
@@ -145,6 +146,10 @@ class MeshLibrary(object):
         if center:
             mesh.apply_translation(-mesh.centroid)
         return mesh
+
+    def subsampled_grasp_idxs(self, category: str, obj_id: str):
+        with h5py.File(f"{self.data_dir}/grasps/{category}_{obj_id}.h5", "r") as data:
+            return np.array(data["grasps/sampled_idxs"])
 
     @lru_cache(maxsize=2048)
     def grasps(self, category: str, obj_id: str):
