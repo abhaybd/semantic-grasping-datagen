@@ -190,15 +190,9 @@ def main(cfg: DictConfig):
             processed_scenes: set[str] = set(fn.split(".")[0] for fn in os.listdir(out_dir) if fn.endswith(".hdf5"))
             print(f"Total generated observations: {len(processed_scenes)}")
 
-            if "n_scenes" in cfg and len(processed_scenes) >= cfg["n_scenes"]:
-                print("Generated enough samples, exiting")
-                break
-
             batch = list(scenes - processed_scenes)
             if len(batch) == 0:
-                print("No new scenes, waiting...")
-                time.sleep(60)
-                continue
+                break
             random.shuffle(batch)  # shuffled to avoid different workers processing the same scenes
             batch = batch[:min(len(batch), 4 * nproc)]
 
