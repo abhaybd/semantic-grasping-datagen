@@ -1,4 +1,4 @@
-OBS_DATASET_NAME=obsgen_0324_1943
+OBS_DATASET_NAME=obsgen_0404_0625
 
 gantry run --budget ai2/prior -w ai2/abhayd \
     --dataset abhayd/${OBS_DATASET_NAME}:/data \

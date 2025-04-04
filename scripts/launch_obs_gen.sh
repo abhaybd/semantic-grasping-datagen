@@ -1,4 +1,4 @@
-DATASET_NAME=datagen_0401_1410
+DATASET_NAME=datagen_0403_1837
 
 gantry run --budget ai2/prior -w ai2/abhayd \
     --dataset abhayd/${DATASET_NAME}:/data \
@@ -10,5 +10,6 @@ gantry run --budget ai2/prior -w ai2/abhayd \
     --cluster ai2/jupiter-cirrascale-2 \
     --cluster ai2/neptune-cirrascale \
     --cluster ai2/prior-elanding \
+    --shared-memory 32GiB \
     -- \
     python semantic_grasping_datagen/datagen/generate_obs.py
