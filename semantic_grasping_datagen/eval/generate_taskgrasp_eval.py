@@ -10,8 +10,8 @@ from tqdm import tqdm
 
 from acronym_tools import create_gripper_marker
 
-from mask_detection import MaskDetector
-from pointcloud import CompositePCRegistration, DeepGMRRegistration, ICPRegistration
+from semantic_grasping_datagen.eval.mask_detection import MaskDetector
+from semantic_grasping_datagen.eval.pointcloud import CompositePCRegistration, DeepGMRRegistration, ICPRegistration
 
 def img_to_pc(rgb: np.ndarray, depth: np.ndarray, cam_info: np.ndarray, mask: np.ndarray | None = None):
     h, w = rgb.shape[:2]
@@ -49,9 +49,11 @@ class TaskGraspScanLibrary:
     def get(self, object_id: str, scan_id: int):
         for i, rgb_path in enumerate(self.rgb_paths):
             dirname = os.path.dirname(rgb_path)
-            if os.path.basename(dirname) == object_id and os.path.basename(rgb_path).split("_", 1)[0] == scan_id:
+            if os.path.basename(dirname) == object_id:
+                pass
+            if os.path.basename(dirname) == object_id and os.path.basename(rgb_path).split("_", 1)[0] == str(scan_id):
                 return self[i]
-        raise ValueError(f"Scan {scan_id} not found")
+        raise ValueError(f"Scan {object_id}_{scan_id} not found")
     
     def __getitem__(self, idx: int) -> dict[str, Any]:
         """Returns (object_name, (rgb, depth, cam_params), fused_pc)"""
@@ -132,8 +134,10 @@ def main():
     )
 
     for elem in tqdm(tg_library):
-        out_file = os.path.join(scan_dir, elem["object_id"], f"{elem['scan_id']}_registered_grasps.npy")
-        if not args.overwrite and os.path.isfile(out_file):
+        out_grasps_file = os.path.join(scan_dir, elem["object_id"], f"{elem['scan_id']}_registered_grasps.npy")
+        out_pc_file = os.path.join(scan_dir, elem["object_id"], f"{elem['scan_id']}_segmented_pc.npy")
+        out_trf_file = os.path.join(scan_dir, elem["object_id"], f"{elem['scan_id']}_pc_to_img_trf.npy")
+        if not args.overwrite and os.path.isfile(out_grasps_file) and os.path.isfile(out_pc_file) and os.path.isfile(out_trf_file):
             continue
         object_mask = mask_detector.detect_mask(elem["object_name"], elem["rgb"])
         if object_mask is None:
@@ -174,7 +178,9 @@ def main():
             marker.apply_transform(grasp)
             scene.add_geometry(marker)
         print(f"Registered {elem['object_id']}_{elem['scan_id']} with cost {cost}")
-        np.save(out_file, grasps)
+        np.save(out_grasps_file, grasps)
+        np.save(out_pc_file, object_pc_crop)
+        np.save(out_trf_file, trf_inv)
         if gen_scene_dir is not None:
             scene.export(os.path.join(gen_scene_dir, f"{elem['object_id']}_{elem['scan_id']}.glb"))
 

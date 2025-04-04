@@ -10,7 +10,7 @@ from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 from sam2.build_sam import build_sam2, HF_MODEL_ID_TO_FILENAMES
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 
-from utils import download
+from semantic_grasping_datagen.eval.utils import download
 
 class MaskDetector:
     def __init__(self, dino_model_id="IDEA-Research/grounding-dino-tiny", sam_model_id="sam2.1_hiera_base_plus", device="cuda"):

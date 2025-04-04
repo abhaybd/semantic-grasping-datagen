@@ -11,7 +11,7 @@ from scipy.spatial import cKDTree
 from learning3d.models.deepgmr import Conv1dBNReLU, TNet, gmm_params, gmm_register, transform
 from learning3d.data_utils.dataloaders import get_rri
 
-from utils import download
+from semantic_grasping_datagen.eval.utils import download
 
 def process(pc: np.ndarray, n_neighbors: int) -> np.ndarray:
     arr = np.concatenate([pc, get_rri(pc - pc.mean(axis=0), n_neighbors)], axis=1)
