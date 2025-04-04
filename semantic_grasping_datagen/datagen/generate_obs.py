@@ -96,7 +96,7 @@ def render(out_dir: str, scene_dir: str):
     out_scene_file = f"{out_dir}/{scene_id}.hdf5"
     if os.path.isfile(out_scene_file):
         print(f"Skipping {scene_id} because it already has observations")
-        return
+        return 0
 
     with open(f"{scene_dir}/scene.pkl", "rb") as f:
         scene_data = pickle.load(f)
@@ -135,6 +135,7 @@ def render(out_dir: str, scene_dir: str):
             observations.append((grasp_pose_in_cam_frame, annot, annot_id))
         view_observations.append(observations)
 
+    n_observations = 0
     with block_signals([signal.SIGINT]):
         with h5py.File(out_scene_file, "w") as f:
             for view_idx, (rgb, xyz, observations, view_pose) in enumerate(zip(view_rgb, view_xyz, view_observations, view_poses)):
@@ -161,6 +162,8 @@ def render(out_dir: str, scene_dir: str):
                         "grasp_id": annot.grasp_id
                     })
                     obs_group.create_dataset("annot", data=annot_str.encode("utf-8"))
+                    n_observations += 1
+    return n_observations
 
 class DummyExecutor:
     def __init__(self, initializer, initargs, **kwargs):
@@ -180,6 +183,7 @@ def main(cfg: DictConfig):
 
     nproc = cfg["n_proc"] or os.cpu_count()
     multiproc = nproc > 1
+    generated_observations = 0
     with (ProcessPoolExecutor if multiproc else DummyExecutor)(
         max_workers=nproc,
         initializer=worker_init,
@@ -188,7 +192,7 @@ def main(cfg: DictConfig):
         while True:
             scenes: set[str] = set(fn for fn in os.listdir(in_dir) if os.path.isdir(f"{in_dir}/{fn}"))
             processed_scenes: set[str] = set(fn.split(".")[0] for fn in os.listdir(out_dir) if fn.endswith(".hdf5"))
-            print(f"Total generated observations: {len(processed_scenes)}")
+            print(f"Total processed scenes: {len(processed_scenes)}, generated observations: {generated_observations}")
 
             batch = list(scenes - processed_scenes)
             if len(batch) == 0:
@@ -200,9 +204,9 @@ def main(cfg: DictConfig):
             # if not multiproc, work happens here - otherwise happens in next loop
             for fn in tqdm(batch, desc="Rendering", dynamic_ncols=True, disable=multiproc):
                 futures.append(executor.submit(render, out_dir, f"{in_dir}/{fn}"))
-            if multiproc:
-                for f in tqdm(as_completed(futures), total=len(futures), desc="Rendering", dynamic_ncols=True, smoothing=0):
-                    f.result()
+            for f in tqdm(as_completed(futures), total=len(futures), desc="Rendering", dynamic_ncols=True, smoothing=0, disable=(not multiproc)):
+                generated_observations += f.result()
+
 
 if __name__ == "__main__":
     main()
