@@ -1,5 +1,12 @@
 from concurrent.futures import ProcessPoolExecutor, as_completed, Future
 import multiprocessing as mp
+
+if __name__ == "__main__":
+    try:
+        mp.set_start_method("spawn")
+    except RuntimeError:
+        pass
+
 from io import BytesIO
 import os
 import pickle
@@ -12,19 +19,15 @@ import h5py
 import hydra
 from omegaconf import DictConfig
 import yaml
+import open3d as o3d
 
 if os.environ.get("PYOPENGL_PLATFORM") is None:
     os.environ["PYOPENGL_PLATFORM"] = "egl"
-# pyrender spawns a lot of OMP threads, limiting to 1 significantly reduces overhead
-if os.environ.get("OMP_NUM_THREADS") is None:
-    os.environ["OMP_NUM_THREADS"] = "1"
 
 import numpy as np
 import pyrender
 import pyrender.light
 import trimesh
-import torch
-from pytorch3d.structures import Pointclouds
 
 from semantic_grasping_datagen.annotation import Annotation
 from semantic_grasping_datagen.utils import tqdm
@@ -142,11 +145,17 @@ def render(out_dir: str, scene_dir: str):
             observations.append((grasp_pose_in_cam_frame, annot, annot_id))
         view_observations.append(observations)
 
-    view_xyz_torch = torch.from_numpy(np.stack(view_xyz, axis=0)).float().cuda()  # (B, H, W, 3)
-    view_points_torch = view_xyz_torch.reshape(view_xyz_torch.shape[0], -1, 3)  # (B, H * W, 3)
-    view_pc = Pointclouds(points=view_points_torch)
-    view_normals = view_pc.estimate_normals()  # (B, H * W, 3)
-    view_normals = view_normals.reshape_as(view_xyz_torch).cpu().numpy()  # (B, H, W, 3)
+    batched_xyz = np.stack(view_xyz, axis=0)  # (B, H, W, 3)
+    batched_points = batched_xyz.reshape(batched_xyz.shape[0], -1, 3)  # (B, H * W, 3)
+    batched_normals = np.zeros_like(batched_points)
+    print(f"Estimating normals for {batched_points.shape[0]} views")
+    for i, points in enumerate(batched_points):
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points)
+        pcd.estimate_normals()
+        normals = np.asarray(pcd.normals)
+        batched_normals[i] = normals
+    view_normals = batched_normals.reshape(batched_xyz.shape)  # (B, H, W, 3)
 
     n_observations = 0
     with block_signals([signal.SIGINT]):
@@ -188,6 +197,12 @@ class DummyExecutor:
         f = Future()
         f.set_result(ret)
         return f
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        pass
 
 @hydra.main(version_base=None, config_path="../../config", config_name="obs_gen.yaml")
 def main(cfg: DictConfig):
