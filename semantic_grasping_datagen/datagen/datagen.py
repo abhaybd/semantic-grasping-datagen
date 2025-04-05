@@ -13,7 +13,6 @@ if os.environ.get("OMP_NUM_THREADS") is None:
     os.environ["OMP_NUM_THREADS"] = "1"
 
 import boto3
-from tqdm import tqdm
 import numpy as np
 import trimesh
 from trimesh import transformations as tra
@@ -36,7 +35,7 @@ from semantic_grasping_datagen.datagen.datagen_utils import (
     set_exit_event
 )
 from semantic_grasping_datagen.annotation import Annotation
-from semantic_grasping_datagen.utils import list_s3_files
+from semantic_grasping_datagen.utils import list_s3_files, tqdm
 
 from acronym_tools import create_gripper_marker
 

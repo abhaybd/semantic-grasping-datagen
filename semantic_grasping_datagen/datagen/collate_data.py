@@ -5,10 +5,10 @@ import re
 import csv
 
 import yaml
-from tqdm import tqdm
 import h5py
 import numpy as np
 
+from semantic_grasping_datagen.utils import tqdm
 from semantic_grasping_datagen.grasp_desc_encoder import GraspDescriptionEncoder
 
 def get_args():

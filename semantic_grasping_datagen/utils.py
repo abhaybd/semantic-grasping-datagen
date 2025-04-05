@@ -1,4 +1,5 @@
 from types_boto3_s3.client import S3Client
+from tqdm import tqdm as tqdm_
 
 def list_s3_files(s3: S3Client, bucket_name: str, prefix: str):
     files_to_download: list[str] = []
@@ -20,3 +21,8 @@ def list_s3_files(s3: S3Client, bucket_name: str, prefix: str):
         else:
             break
     return files_to_download
+
+class tqdm(tqdm_):
+    def __init__(self, *args, **kwargs):
+        kwargs["bar_format"] = "{l_bar}{bar}{r_bar}\n"
+        super().__init__(*args, **kwargs)

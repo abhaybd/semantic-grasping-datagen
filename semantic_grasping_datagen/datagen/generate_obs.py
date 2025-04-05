@@ -20,7 +20,6 @@ if os.environ.get("OMP_NUM_THREADS") is None:
     os.environ["OMP_NUM_THREADS"] = "1"
 
 import numpy as np
-from tqdm import tqdm
 import pyrender
 import pyrender.light
 import trimesh
@@ -28,6 +27,7 @@ import torch
 from pytorch3d.structures import Pointclouds
 
 from semantic_grasping_datagen.annotation import Annotation
+from semantic_grasping_datagen.utils import tqdm
 
 @contextmanager
 def block_signals(signals: list[int]):
