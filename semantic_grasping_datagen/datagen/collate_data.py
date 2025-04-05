@@ -37,7 +37,7 @@ def main():
     dataset_path = os.path.join(args.out_dir, "dataset.csv")
     with open(dataset_path, "w", newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(["scene_path", "annotation_id", "scene_id", "view_id", "rgb_key", "xyz_key", "annot_key", "grasp_pose_key", "annot"])
+        writer.writerow(["scene_path", "annotation_id", "scene_id", "view_id", "rgb_key", "xyz_key", "normals_key", "annot_key", "grasp_pose_key", "annot"])
 
         for scene_file in tqdm(os.listdir(args.observation_dir), desc="Processing scenes"):
             if not scene_file.endswith(".hdf5"):
@@ -48,6 +48,7 @@ def main():
                 for view_id in f.keys():
                     rgb_key = f"{view_id}/rgb"
                     xyz_key = f"{view_id}/xyz"
+                    normals_key = f"{view_id}/normals"
                     for obs_id in f[view_id].keys():
                         if not obs_id.startswith("obs_"):
                             continue
@@ -66,9 +67,9 @@ def main():
                             annot = f"The grasp is on the {obj_name}. " + annotation["grasp_description"]
                         texts.append(annot)
 
-                        for key in [rgb_key, xyz_key, annot_key, grasp_pose_key]:
+                        for key in [rgb_key, xyz_key, normals_key, annot_key, grasp_pose_key]:
                             assert key in f, f"Key {key} not found in {scene_file}"
-                        writer.writerow([scene_file, annot_id, scene_id, view_id, rgb_key, xyz_key, annot_key, grasp_pose_key, annot])
+                        writer.writerow([scene_file, annot_id, scene_id, view_id, rgb_key, xyz_key, normals_key, annot_key, grasp_pose_key, annot])
 
     print("Embedding texts...")
     unique_text_idxs = defaultdict(list)
