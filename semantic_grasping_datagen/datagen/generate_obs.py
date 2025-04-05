@@ -4,7 +4,6 @@ from io import BytesIO
 import os
 import pickle
 import random
-import time
 from base64 import b64decode
 from contextlib import contextmanager
 import signal
@@ -25,7 +24,8 @@ from tqdm import tqdm
 import pyrender
 import pyrender.light
 import trimesh
-from PIL import Image
+import torch
+from pytorch3d.structures import Pointclouds
 
 from semantic_grasping_datagen.annotation import Annotation
 
@@ -84,6 +84,13 @@ def set_camera(scene: pyrender.Scene, cam_K: np.ndarray, cam_pose: np.ndarray):
     scene.add_node(camera_light_node)
 
 def backproject(cam_K: np.ndarray, depth: np.ndarray):
+    """
+    Args:
+        cam_K: camera intrinsic matrix (3, 3)
+        depth: depth image (H, W)
+    Returns:
+        xyz: xyz coordinates of the points in the camera frame (H, W, 3)
+    """
     height, width = depth.shape
     u, v = np.meshgrid(np.arange(width), np.arange(height), indexing="xy")
     uvd = np.stack((u, v, np.ones_like(u)), axis=-1).astype(np.float32)
@@ -135,10 +142,16 @@ def render(out_dir: str, scene_dir: str):
             observations.append((grasp_pose_in_cam_frame, annot, annot_id))
         view_observations.append(observations)
 
+    view_xyz_torch = torch.from_numpy(np.stack(view_xyz, axis=0)).float().cuda()  # (B, H, W, 3)
+    view_points_torch = view_xyz_torch.reshape(view_xyz_torch.shape[0], -1, 3)  # (B, H * W, 3)
+    view_pc = Pointclouds(points=view_points_torch)
+    view_normals = view_pc.estimate_normals()  # (B, H * W, 3)
+    view_normals = view_normals.reshape_as(view_xyz_torch).cpu().numpy()  # (B, H, W, 3)
+
     n_observations = 0
     with block_signals([signal.SIGINT]):
         with h5py.File(out_scene_file, "w") as f:
-            for view_idx, (rgb, xyz, observations, view_pose) in enumerate(zip(view_rgb, view_xyz, view_observations, view_poses)):
+            for view_idx, (rgb, xyz, normals, pose, observations) in enumerate(zip(view_rgb, view_xyz, view_normals, view_poses, view_observations)):
                 view_group = f.create_group(f"view_{view_idx}")
 
                 rgb_ds = view_group.create_dataset("rgb", data=rgb, compression="gzip")
@@ -148,7 +161,8 @@ def render(out_dir: str, scene_dir: str):
                 rgb_ds.attrs['INTERLACE_MODE'] = np.string_('INTERLACE_PIXEL')
 
                 view_group.create_dataset("xyz", data=xyz, compression="gzip")
-                view_group.create_dataset("view_pose", data=view_pose, compression="gzip")
+                view_group.create_dataset("normals", data=normals, compression="gzip")
+                view_group.create_dataset("view_pose", data=pose, compression="gzip")
 
                 for obs_idx, (grasp_pose, annot, annot_id) in enumerate(observations):
                     obs_group = view_group.create_group(f"obs_{obs_idx}")
