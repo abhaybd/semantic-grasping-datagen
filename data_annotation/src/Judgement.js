@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router';
 import ObjectViewer from './ObjectViewer';
+import ProgressBar from './ProgressBar';
 import './DataAnnotation.css';
 import './Judgement.css';
 
@@ -13,42 +14,78 @@ const Judgement = () => {
   const [submitting, setSubmitting] = useState(false);
   const [startTime, setStartTime] = useState(Date.now());
   const [objectLoading, setObjectLoading] = useState(true);
+  const [judgementSchedule, setJudgementSchedule] = useState(null);
+
+  const encodeStr = (str) => {
+    return encodeURIComponent(btoa(str));
+  };
+
+  const decodeStr = (str) => {
+    return atob(decodeURIComponent(str));
+  };
+
+  const navigateToSchedule = (schedule) => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set("judgement_schedule", encodeStr(JSON.stringify(schedule)));
+    navigate({
+      pathname: "/judgement",
+      search: newParams.toString()
+    }, {replace: true});
+  };
 
   useEffect(() => {
-    const fetchAnnotation = async () => {
-      setLoading(true);
-      const category = searchParams.get('category');
-      const objectId = searchParams.get('object_id');
-      const graspId = searchParams.get('grasp_id');
-      const userId = searchParams.get('user_id');
-      const studyId = searchParams.get('study_id') || '';
-
-      if (!category || !objectId || !graspId || !userId) {
-        alert('Missing required parameters!');
+    if (searchParams.has("judgement_schedule")) {
+      const schedule = JSON.parse(decodeStr(searchParams.get("judgement_schedule")));
+      const idx = schedule.idx;
+      if (idx >= schedule.judgements.length || idx < 0) {
+        alert("Invalid schedule index!");
         navigate('/');
         return;
       }
-
-      try {
-        const response = await fetch(`/api/get-annotation/${category}/${objectId}/${graspId}/${userId}?study_id=${studyId}`);
-        
-        if (!response.ok) {
-          throw new Error(`Failed to fetch annotation: HTTP ${response.status}`);
-        }
-        
-        const data = await response.json();
-        setAnnotation(data);
-        setStartTime(Date.now());
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching annotation:', error);
-        alert('Error fetching annotation: ' + error.message);
-        setLoading(false);
-      }
-    };
-
-    fetchAnnotation();
+      setJudgementSchedule(schedule);
+      
+      // Set URL params from the current judgement in the schedule
+      const currentJudgement = schedule.judgements[idx];
+      fetchAnnotation(
+        currentJudgement.category,
+        currentJudgement.object_id,
+        currentJudgement.grasp_id,
+        currentJudgement.user_id,
+        currentJudgement.study_id || ''
+      );
+    } else {
+      alert('Missing judgement schedule!');
+      navigate('/');
+    }
   }, [searchParams, navigate]);
+
+  const fetchAnnotation = async (category, objectId, graspId, userId, studyId) => {
+    setLoading(true);
+    setJudgement('');
+
+    if (!category || !objectId || !graspId || !userId) {
+      alert('Missing required parameters!');
+      navigate('/');
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/get-annotation/${category}/${objectId}/${graspId}/${userId}?study_id=${studyId}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch annotation: HTTP ${response.status}`);
+      }
+      
+      const data = await response.json();
+      setAnnotation(data);
+      setStartTime(Date.now());
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching annotation:', error);
+      alert('Error fetching annotation: ' + error.message);
+      setLoading(false);
+    }
+  };
 
   const handleJudgementSelect = (value) => {
     setJudgement(value);
@@ -63,12 +100,24 @@ const Judgement = () => {
     setSubmitting(true);
     const timeTaken = (Date.now() - startTime) / 1000;
     
-    const category = searchParams.get('category');
-    const objectId = searchParams.get('object_id');
-    const graspId = searchParams.get('grasp_id');
-    const userId = searchParams.get('user_id');
-    const studyId = searchParams.get('study_id') || '';
-    const judgerUserId = searchParams.get('judger_id') || 'anonymous';
+    let category, objectId, graspId, userId, studyId, judgerUserId;
+    
+    if (judgementSchedule) {
+      const currentJudgement = judgementSchedule.judgements[judgementSchedule.idx];
+      category = currentJudgement.category;
+      objectId = currentJudgement.object_id;
+      graspId = currentJudgement.grasp_id;
+      userId = currentJudgement.user_id;
+      studyId = currentJudgement.study_id || '';
+      judgerUserId = currentJudgement.judger_id || searchParams.get('judger_id') || 'anonymous';
+    } else {
+      category = searchParams.get('category');
+      objectId = searchParams.get('object_id');
+      graspId = searchParams.get('grasp_id');
+      userId = searchParams.get('user_id');
+      studyId = searchParams.get('study_id') || '';
+      judgerUserId = searchParams.get('judger_id') || 'anonymous';
+    }
 
     const annotKey = `${studyId}__${category}__${objectId}__${graspId}__${userId}`;
 
@@ -90,8 +139,18 @@ const Judgement = () => {
         throw new Error(`Failed to submit judgement: HTTP ${response.status}`);
       }
 
-      alert('Judgement submitted successfully!');
-      navigate('/');
+      if (judgementSchedule) {
+        if (judgementSchedule.idx + 1 === judgementSchedule.judgements.length) {
+          alert('All judgements completed!');
+          navigate('/');
+        } else {
+          const newSchedule = { ...judgementSchedule, idx: judgementSchedule.idx + 1 };
+          navigateToSchedule(newSchedule);
+        }
+      } else {
+        alert('Judgement submitted successfully!');
+        navigate('/');
+      }
     } catch (error) {
       console.error('Error submitting judgement:', error);
       alert('Error submitting judgement: ' + error.message);
@@ -105,6 +164,13 @@ const Judgement = () => {
   return (
     <div className="data-annotation-container">
       <h2>Judgement Page</h2>
+      
+      {judgementSchedule && judgementSchedule.judgements.length > 1 && (
+        <div className="progress-container">
+          <span>{judgementSchedule.idx + 1}/{judgementSchedule.judgements.length}</span>
+          <ProgressBar completed={judgementSchedule.idx} total={judgementSchedule.judgements.length} />
+        </div>
+      )}
       
       <div className="content-container">
         <div className="object-viewer-container">
