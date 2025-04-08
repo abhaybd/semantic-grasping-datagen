@@ -16,7 +16,7 @@ import boto3
 import re
 
 from acronym_tools import create_gripper_marker
-from annotation import Annotation, PracticeResult
+from annotation import Annotation, PracticeResult, Judgement
 
 s3 = boto3.client("s3")
 
@@ -24,6 +24,7 @@ BUCKET_NAME = "prior-datasets"
 DATA_PREFIX = "semantic-grasping/acronym/"
 ANNOTATION_PREFIX = "semantic-grasping/annotations/"
 PRACTICE_PREFIX = "semantic-grasping/practice-results/"
+JUDGEMENT_PREFIX = "semantic-grasping/judgements/"
 
 if "ANNOT_CATEGORIES" in os.environ:
     CATEGORIES = set(s.strip() for s in os.environ["ANNOT_CATEGORIES"].split(","))
@@ -205,6 +206,34 @@ async def submit_practice_result(result: PracticeResult):
     result_key = f"{PRACTICE_PREFIX}{study_id}__{result.user_id}_{result.timestamp}.json"
     result_bytes = io.BytesIO(result.model_dump_json().encode("utf-8"))
     s3.upload_fileobj(result_bytes, BUCKET_NAME, result_key)
+
+@app.get("/api/get-annotation/{category}/{obj_id}/{grasp_id}/{user_id}")
+async def get_annotation(category: str, obj_id: str, grasp_id: int, user_id: str, study_id: str = ""):
+    study_id = study_id or "NOSTUDYID"
+    annotation_key = f"{ANNOTATION_PREFIX}{study_id}__{category}__{obj_id}__{grasp_id}__{user_id}.json"
+    
+    try:
+        annotation_bytes = io.BytesIO()
+        s3.download_fileobj(BUCKET_NAME, annotation_key, annotation_bytes)
+        annotation_bytes.seek(0)
+        annotation_json = annotation_bytes.read().decode('utf-8')
+        
+        annotation = Annotation.model_validate_json(annotation_json)
+        return annotation
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Annotation not found: {str(e)}")
+
+@app.post("/api/submit-judgement")
+async def submit_judgement(judgement: Judgement):
+    """Submit a judgement for an annotation"""
+    print(f"User {judgement.user_id} judged annotation {judgement.annot_key} as {judgement.judgement_label}")
+    
+    judgement_key = f"{JUDGEMENT_PREFIX}{judgement.annot_key}__{judgement.user_id}.json"
+    
+    judgement_bytes = io.BytesIO(judgement.model_dump_json().encode("utf-8"))
+    s3.upload_fileobj(judgement_bytes, BUCKET_NAME, judgement_key)
+    
+    return {"success": True}
 
 app.mount("/static", StaticFiles(directory="data_annotation/build/static"), name="static")
 
