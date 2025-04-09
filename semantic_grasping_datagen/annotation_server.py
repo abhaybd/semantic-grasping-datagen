@@ -209,26 +209,30 @@ async def submit_practice_result(result: PracticeResult):
 
 @app.get("/api/get-annotation/{category}/{obj_id}/{grasp_id}/{user_id}")
 async def get_annotation(category: str, obj_id: str, grasp_id: int, user_id: str, study_id: str = ""):
-    study_id = study_id or "NOSTUDYID"
-    annotation_key = f"{ANNOTATION_PREFIX}{study_id}__{category}__{obj_id}__{grasp_id}__{user_id}.json"
-    
+    study_id_pfx = f"{study_id}__" if study_id else ""
+    annotation_key = f"{ANNOTATION_PREFIX}{study_id_pfx}{category}__{obj_id}__{grasp_id}__{user_id}.json"
+
+    annotation_bytes = io.BytesIO()
     try:
-        annotation_bytes = io.BytesIO()
         s3.download_fileobj(BUCKET_NAME, annotation_key, annotation_bytes)
-        annotation_bytes.seek(0)
-        annotation_json = annotation_bytes.read().decode('utf-8')
-        
-        annotation = Annotation.model_validate_json(annotation_json)
-        return annotation
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Annotation not found: {str(e)}")
+    except:
+        return HTTPException(status_code=404, detail=f"Annotation not found: {annotation_key}")
+    annotation_bytes.seek(0)
+    annotation_json = annotation_bytes.read().decode('utf-8')
+    
+    annotation = Annotation.model_validate_json(annotation_json)
+    return annotation
 
 @app.post("/api/submit-judgement")
 async def submit_judgement(judgement: Judgement):
     """Submit a judgement for an annotation"""
-    print(f"User {judgement.user_id} judged annotation {judgement.annot_key} as {judgement.judgement_label}")
+    annotation = judgement.annotation
+    annot_study_id_pfx = f"{annotation.study_id}__" if annotation.study_id else ""
+    annot_key = f"{annot_study_id_pfx}{annotation.obj.object_category}__{annotation.obj.object_id}__{annotation.grasp_id}__{annotation.user_id}"
+    print(f"User {judgement.user_id} judged annotation {annot_key} as {judgement.judgement_label}")
     
-    judgement_key = f"{JUDGEMENT_PREFIX}{judgement.annot_key}__{judgement.user_id}.json"
+    study_id = judgement.study_id or "NOSTUDYID"
+    judgement_key = f"{JUDGEMENT_PREFIX}{study_id}__{judgement.user_id}___{annot_key}.json"
     
     judgement_bytes = io.BytesIO(judgement.model_dump_json().encode("utf-8"))
     s3.upload_fileobj(judgement_bytes, BUCKET_NAME, judgement_key)

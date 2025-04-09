@@ -33,7 +33,7 @@ function App() {
 
   return (
     <div className="App">
-      <header className="App-header">
+      <header className="App-header ai2-header">
         <h1>Grasp Description Annotation</h1>
       </header>
       <main className="App-main">

@@ -7,9 +7,9 @@ class GraspLabel(str, Enum):
     INFEASIBLE = "infeasible"
 
 class JudgementLabel(str, Enum):
-    GOOD = "good"
-    BAD = "bad"
-    MID = "mid"
+    ACCURATE = "accurate"
+    INACCURATE = "inaccurate"
+    UNCERTAIN = "uncertain"
 
 class Object(BaseModel, frozen=True):
     object_category: str
@@ -27,9 +27,10 @@ class Annotation(BaseModel, frozen=True):
     study_id: str = ""
 
 class Judgement(BaseModel, frozen=True):
-    annot_key: str # {ANNOTATION_PREFIX}{study_id}__{category}__{obj_id}__{grasp_id}__{user_id}
+    annotation: Annotation
     judgement_label: JudgementLabel
     user_id: str = ""
+    study_id: str = ""
     time_taken: float = -1.0
 
 class QuestionResult(BaseModel, frozen=True):
