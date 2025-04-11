@@ -73,6 +73,7 @@ def get_grasp_point(grasp_pose: np.ndarray, cam_params: np.ndarray, width: int, 
 def main():
     args = get_args()
     os.makedirs(args.out_dir, exist_ok=True)
+    os.makedirs(os.path.join(args.out_dir, "images"), exist_ok=True)
 
     sample_fn = create_robopoint_sample if args.format == "robopoint" else create_molmo_sample
 
