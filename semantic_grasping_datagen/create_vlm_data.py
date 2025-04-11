@@ -13,7 +13,65 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("out_dir", type=str)
     parser.add_argument("--data-dir", type=str, default="/net/nfs2.prior/abhayd/semantic-grasping/data/taskgrasp")
+    parser.add_argument("--format", type=str, default="robopoint", choices=["robopoint", "molmo"])
+    parser.add_argument("--dedupe", action="store_true")
     return parser.parse_args()
+
+def points_to_tuples(grasp_pts: np.ndarray):
+    if grasp_pts.ndim == 1:
+        grasp_pts = grasp_pts[None]
+    assert grasp_pts.ndim == 2 and grasp_pts.shape[-1] == 2
+    return f"[{', '.join([f'({x:.3f}, {y:.3f})' for x, y in grasp_pts])}]"
+
+def create_robopoint_sample(completed: set[str] | None, object_id: str, scan_id: str, grasp_id: int, object_name: str, task: str, image_path: str, grasp_pt: np.ndarray):
+    uid = f"{object_id}-{scan_id}-{task}"
+    if completed is not None:
+        if uid in completed:
+            return None
+        completed.add(uid)
+    return {
+        "id": f"{object_id}-{scan_id}-{grasp_id}-{task}",
+        "image": image_path,
+        "conversations": [
+            {
+                "from": "human",
+                "value": f"<image>\nPoint to where to grasp the {object_name} in order to {task}. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...], where each tuple contains the x and y coordinates of a point satisfying the conditions above. The coordinates should be between 0 and 1, indicating the normalized pixel locations of the points in the image."
+            },
+            {
+                "from": "gpt",
+                "value": points_to_tuples(grasp_pt)
+            }
+        ]
+    }
+
+def point_to_xml(grasp_pt: np.ndarray, object_name: str, task: str):
+    if grasp_pt.ndim == 2:
+        assert grasp_pt.shape == (1, 2)
+        grasp_pt = grasp_pt[0]
+    assert grasp_pt.shape == (2,)
+    point_desc = f"Where to grasp the {object_name} in order to {task}"
+    return f"<point x=\"{grasp_pt[0]*100:.1f}\" y=\"{grasp_pt[1]*100:.1f}\" alt=\"{point_desc}\">{point_desc}</point>"
+
+def create_molmo_sample(completed: set[str] | None, object_id: str, scan_id: str, grasp_id: int, object_name: str, task: str, image_path: str, grasp_pt: np.ndarray):
+    uid = f"{object_id}-{scan_id}-{task}"
+    if completed is not None:
+        if uid in completed:
+            return None
+        completed.add(uid)
+    return {
+        "id": f"{object_id}-{scan_id}-{grasp_id}-{task}",
+        "image": image_path,
+        "conversations": [
+            {
+                "from": "human",
+                "value": f"Point to where to grasp the {object_name} in order to {task}."
+            },
+            {
+                "from": "gpt",
+                "value": point_to_xml(grasp_pt, object_name, task)
+            }
+        ]
+    }
 
 def main():
     args = get_args()
@@ -35,6 +93,10 @@ def main():
                 if grasp_id not in object_grasp_tasks[object_id]:
                     object_grasp_tasks[object_id][grasp_id] = set()
                 object_grasp_tasks[object_id][grasp_id].add(task)
+
+    create_sample_fn = create_robopoint_sample if args.format == "robopoint" else create_molmo_sample
+
+    completed = set() if args.dedupe else None
 
     tg_library = TaskGraspScanLibrary(os.path.join(args.data_dir, "scans"))
     lines = []
@@ -65,20 +127,9 @@ def main():
 
         for grasp_id, grasp_pt in enumerate(points_frac):
             for task in object_grasp_tasks.get(object_id, {}).get(grasp_id, []):
-                lines.append({
-                    "id": f"{object_id}-{scan_id}-{grasp_id}-{task}",
-                    "image": image_relpath,
-                    "conversations": [
-                        {
-                            "from": "human",
-                            "value": f"<image>\nPoint to where to grasp the {object_name} in order to {task}. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...], where each tuple contains the x and y coordinates of a point satisfying the conditions above. The coordinates should be between 0 and 1, indicating the normalized pixel locations of the points in the image."
-                        },
-                        {
-                            "from": "gpt",
-                            "value": f"[({grasp_pt[0]:.3f}, {grasp_pt[1]:.3f})]"
-                        }
-                    ]
-                })
+                sample = create_sample_fn(completed, object_id, scan_id, grasp_id, object_name, task, image_relpath, grasp_pt)
+                if sample is not None:
+                    lines.append(sample)
 
     with open(os.path.join(args.out_dir, "taskgrasp_point.json"), "w") as f:
         json.dump(lines, f, indent=2)
