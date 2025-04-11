@@ -36,6 +36,7 @@ const Judgement = () => {
   const [judgementSchedule, setJudgementSchedule] = useState(null);
   const [judgerUserId, setJudgerUserId] = useState("");
   const [showTutorial, setShowTutorial] = useState(false);
+  const [correctGraspDescription, setCorrectGraspDescription] = useState("");
 
   const encodeStr = (str) => {
     return encodeURIComponent(btoa(str));
@@ -72,7 +73,6 @@ const Judgement = () => {
 
       const currentJudgement = schedule.judgements[idx];
 
-      console.log(currentJudgement);
       fetchAnnotation(
         currentJudgement.object_category,
         currentJudgement.object_id,
@@ -86,6 +86,20 @@ const Judgement = () => {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, navigate]);
+
+  useEffect(() => {
+    if (annotation) {
+      setCorrectGraspDescription(annotation.grasp_description);
+    }
+  }, [annotation]);
+
+  useEffect(() => {
+    const hasSeenTutorial = localStorage.getItem('judgementTutorialSeen');
+    if (!hasSeenTutorial) {
+      setShowTutorial(true);
+      localStorage.setItem('judgementTutorialSeen', 'true');
+    }
+  }, []);
 
   const fetchAnnotation = async (
     category,
@@ -144,6 +158,7 @@ const Judgement = () => {
           user_id: judgerUserId,
           time_taken: timeTaken,
           study_id: studyId,
+          correct_grasp_description: judgement === "inaccurate" ? correctGraspDescription : null,
         }),
       });
 
@@ -171,7 +186,6 @@ const Judgement = () => {
 
   const isFullyLoaded = !loading && !objectLoading;
 
-  console.log(annotation);
   return (
     <div className="data-annotation-container">
       <div className="header-buttons">
@@ -198,7 +212,7 @@ const Judgement = () => {
         </div>
       )}
 
-      <div className="content-container">
+      <div className="content-container" style={{alignItems: "flex-start"}}>
         <div className="object-viewer-container">
           {annotation && (
             <ObjectViewer
@@ -245,7 +259,9 @@ const Judgement = () => {
                   <div className="judgement-options">
                     <button
                       className={`judgement-button ${judgement === "accurate" ? "selected" : ""}`}
-                      onClick={() => setJudgement("accurate")}
+                      onClick={() => {
+                        setJudgement("accurate");
+                      }}
                       disabled={!isFullyLoaded}
                     >
                       <FaCheckCircle className="judgement-icon" />
@@ -254,7 +270,9 @@ const Judgement = () => {
 
                     <button
                       className={`judgement-button ${judgement === "uncertain" ? "selected" : ""}`}
-                      onClick={() => setJudgement("uncertain")}
+                      onClick={() => {
+                        setJudgement("uncertain");
+                      }}
                       disabled={!isFullyLoaded}
                     >
                       <FaQuestionCircle className="judgement-icon" />
@@ -271,10 +289,21 @@ const Judgement = () => {
                     </button>
                   </div>
 
+                  <div className={`correct-grasp-container ${judgement === "inaccurate" ? "visible" : ""}`}>
+                    <label htmlFor="correctGraspDescription">Corrected Grasp Description:</label>
+                    <textarea
+                      id="correctGraspDescription"
+                      value={correctGraspDescription}
+                      onChange={e => setCorrectGraspDescription(e.target.value)}
+                      placeholder="Describe how the object should be grasped..."
+                      className="correct-grasp-textarea"
+                    />
+                  </div>
+
                   <button
                     className="ai2-button submit-button"
                     onClick={handleSubmit}
-                    disabled={!judgement || submitting || !isFullyLoaded || !judgerUserId.trim()}
+                    disabled={!judgement || submitting || !isFullyLoaded || !judgerUserId.trim() || (judgement === "inaccurate" && (!correctGraspDescription.trim() || correctGraspDescription === annotation.grasp_description))}
                   >
                     {submitting ? "Submitting..." : "Submit Judgement"}
                   </button>

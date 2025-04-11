@@ -12,6 +12,20 @@ const JudgementTutorial = ({ onClose }) => {
         </button>
         <div className="tutorial-content">
           <h2>Grasp Description Guidelines</h2>
+
+          <p>
+            This is an interface for you to judge the quality of existing grasp descriptions.
+            You will be given a 3D model of an object, along with a proposed way to grasp it.
+            Given a description of how the object is being grasped, your job is to judge whether it is an accurate description of the grasp.
+          </p>
+          <p>
+            If the description is inaccurate, you should provide a corrected description of how the object should be grasped.
+            In general, you should adhere to the style of the provided description, and only correct factual errors.
+          </p>
+          <p>
+            In extreme cases, you may not know the correct grasp description, and you should mark the description as unsure.
+            Please minimize the number of unsure judgements, but it is preferable to mark unsure than to guess.
+          </p>
           
           <h3>What Makes a Good Grasp Description</h3>
           <p>
