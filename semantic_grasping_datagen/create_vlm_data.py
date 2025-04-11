@@ -64,9 +64,10 @@ def create_molmo_sample(scene_id: str, view_id: str, obs_id: str, image_path: st
 
 def get_grasp_point(grasp_pose: np.ndarray, cam_params: np.ndarray, width: int, height: int):
     # TODO: this should be done using closest-point queries to the mesh
+    assert grasp_pose.shape == (4, 4)
     grasp_pos_m = grasp_pose[:3, 3] + grasp_pose[:3, 2] * 0.112
-    points_px = grasp_pos_m @ cam_params.T
-    points_px = points_px[:, :2] / points_px[:, 2:3]
+    points_px = cam_params @ grasp_pos_m
+    points_px = points_px[:2] / points_px[2]
     points_frac = points_px / np.array([width, height])
     return points_frac
 
