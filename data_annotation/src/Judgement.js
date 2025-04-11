@@ -2,10 +2,11 @@ import React, { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router";
 import ObjectViewer from "./ObjectViewer";
 import ProgressBar from "./ProgressBar";
+import JudgementTutorial from "./JudgementTutorial";
 import "./DataAnnotation.css";
 import "./Judgement.css";
 import { FaCheckCircle, FaQuestionCircle, FaTimesCircle } from 'react-icons/fa';
-
+import { BsBoxArrowUpRight } from 'react-icons/bs';
 /*
 Judgement schedule looks like:
 {
@@ -34,6 +35,7 @@ const Judgement = () => {
   const [objectLoading, setObjectLoading] = useState(true);
   const [judgementSchedule, setJudgementSchedule] = useState(null);
   const [judgerUserId, setJudgerUserId] = useState("");
+  const [showTutorial, setShowTutorial] = useState(false);
 
   const encodeStr = (str) => {
     return encodeURIComponent(btoa(str));
@@ -70,6 +72,7 @@ const Judgement = () => {
 
       const currentJudgement = schedule.judgements[idx];
 
+      console.log(currentJudgement);
       fetchAnnotation(
         currentJudgement.object_category,
         currentJudgement.object_id,
@@ -102,7 +105,7 @@ const Judgement = () => {
 
     try {
       const response = await fetch(
-        `/api/get-annotation/${category}/${objectId}/${graspId}/${userId}?study_id=${studyId}`
+        `/api/get-annotation/${category}/${objectId}/${graspId}/${userId}?study_id=${studyId}&synthetic=true`
       );
 
       if (!response.ok) {
@@ -168,9 +171,20 @@ const Judgement = () => {
 
   const isFullyLoaded = !loading && !objectLoading;
 
+  console.log(annotation);
   return (
     <div className="data-annotation-container">
-      <h2 className="ai2-header judgement-header">Annotation Judgement</h2>
+      <div className="header-buttons">
+        <button className="ai2-button" onClick={() => setShowTutorial(true)}>
+          Show Tutorial
+        </button>
+        <button className="ai2-button" onClick={() => window.open("/reference", '_blank')}>
+          Show Examples
+          <BsBoxArrowUpRight style={{marginLeft: "5px"}} />
+        </button>
+      </div>
+
+      {showTutorial && <JudgementTutorial onClose={() => setShowTutorial(false)} />}
 
       {judgementSchedule && judgementSchedule.judgements.length > 1 && (
         <div className="progress-container">
@@ -208,18 +222,8 @@ const Judgement = () => {
                 <h3 className="form-subtitle">Annotation Details</h3>
                 <div className="annotation-details">
                   <div className="detail-row">
-                    <strong>Object Description:</strong>
-                    <p>{annotation.obj_description}</p>
-                  </div>
-
-                  <div className="detail-row">
                     <strong>Grasp Description:</strong>
                     <p>{annotation.grasp_description}</p>
-                  </div>
-
-                  <div className="detail-row">
-                    <strong>Grasp Label:</strong>
-                    <p>{annotation.grasp_label.charAt(0).toUpperCase() + annotation.grasp_label.substring(1).toLowerCase()}</p>
                   </div>
                 </div>
               </div>
@@ -240,9 +244,7 @@ const Judgement = () => {
                   </div>
                   <div className="judgement-options">
                     <button
-                      className={`judgement-button ${
-                        judgement === "accurate" ? "selected" : ""
-                      }`}
+                      className={`judgement-button ${judgement === "accurate" ? "selected" : ""}`}
                       onClick={() => setJudgement("accurate")}
                       disabled={!isFullyLoaded}
                     >
@@ -251,9 +253,7 @@ const Judgement = () => {
                     </button>
 
                     <button
-                      className={`judgement-button ${
-                        judgement === "uncertain" ? "selected" : ""
-                      }`}
+                      className={`judgement-button ${judgement === "uncertain" ? "selected" : ""}`}
                       onClick={() => setJudgement("uncertain")}
                       disabled={!isFullyLoaded}
                     >
@@ -262,9 +262,7 @@ const Judgement = () => {
                     </button>
 
                     <button
-                      className={`judgement-button ${
-                        judgement === "inaccurate" ? "selected" : ""
-                      }`}
+                      className={`judgement-button ${judgement === "inaccurate" ? "selected" : ""}`}
                       onClick={() => setJudgement("inaccurate")}
                       disabled={!isFullyLoaded}
                     >

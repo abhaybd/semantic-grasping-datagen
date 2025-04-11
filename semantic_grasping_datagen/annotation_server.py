@@ -22,6 +22,7 @@ s3 = boto3.client("s3")
 
 BUCKET_NAME = "prior-datasets"
 DATA_PREFIX = "semantic-grasping/acronym/"
+SYNTHETIC_ANNOTATION_PREFIX = "semantic-grasping/annotations-synthetic/"
 ANNOTATION_PREFIX = "semantic-grasping/annotations/"
 PRACTICE_PREFIX = "semantic-grasping/practice-results/"
 JUDGEMENT_PREFIX = "semantic-grasping/judgements/"
@@ -208,9 +209,10 @@ async def submit_practice_result(result: PracticeResult):
     s3.upload_fileobj(result_bytes, BUCKET_NAME, result_key)
 
 @app.get("/api/get-annotation/{category}/{obj_id}/{grasp_id}/{user_id}")
-async def get_annotation(category: str, obj_id: str, grasp_id: int, user_id: str, study_id: str = ""):
+async def get_annotation(category: str, obj_id: str, grasp_id: int, user_id: str, study_id: str = "", synthetic: bool = False):
     study_id_pfx = f"{study_id}__" if study_id else ""
-    annotation_key = f"{ANNOTATION_PREFIX}{study_id_pfx}{category}__{obj_id}__{grasp_id}__{user_id}.json"
+    prefix = SYNTHETIC_ANNOTATION_PREFIX if synthetic else ANNOTATION_PREFIX
+    annotation_key = f"{prefix}{study_id_pfx}{category}__{obj_id}__{grasp_id}__{user_id}.json"
 
     annotation_bytes = io.BytesIO()
     try:

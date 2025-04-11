@@ -148,3 +148,15 @@
 #judgerUserId {
   margin: 0;
 }
+
+.header-buttons {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.header-buttons .ai2-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
