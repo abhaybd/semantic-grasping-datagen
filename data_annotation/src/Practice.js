@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import ObjectViewer from './ObjectViewer';
 import Tutorial from './Tutorial';
+import JudgementTutorial from './JudgementTutorial';
 import './Practice.css';
 
 export const QUESTIONS = [
@@ -111,8 +112,10 @@ const Practice = () => {
   const [practiceStartTime] = useState(Date.now());
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const isJudgement = searchParams.get('judgement') === 'true';
 
   const currentQuestion = QUESTIONS[currentQuestionIdx];
+  const redirect = isJudgement ? "/judgement" : "/";
 
   useEffect(() => {
     const lastPassedTime = localStorage.getItem('practicePassedTime');
@@ -120,7 +123,7 @@ const Practice = () => {
       const hoursSincePass = (Date.now() - parseInt(lastPassedTime)) / (1000 * 60 * 60);
       if (hoursSincePass < 24) {
         navigate({
-          pathname: '/',
+          pathname: redirect,
           search: searchParams.toString()
         }, {replace: true});
         return;
@@ -129,10 +132,11 @@ const Practice = () => {
   }, [navigate, searchParams]);
 
   useEffect(() => {
-    const hasSeenTutorial = localStorage.getItem('hasSeenTutorial');
+    const key = isJudgement ? "hasSeenJudgementTutorial" : "hasSeenTutorial";
+    const hasSeenTutorial = localStorage.getItem(key) === 'true';
     if (!hasSeenTutorial) {
       setShowTutorial(true);
-      localStorage.setItem('hasSeenTutorial', 'true');
+      localStorage.setItem(key, 'true');
     }
   }, []);
 
@@ -197,11 +201,11 @@ const Practice = () => {
   const handleContinue = async () => {
     if (currentQuestionIdx === QUESTIONS.length - 1) {
       await submitPracticeResults();
-      
+
       if (correctAnswers / QUESTIONS.length >= 0.5) {
         localStorage.setItem('practicePassedTime', Date.now().toString());
         navigate({
-          pathname: '/',
+          pathname: redirect,
           search: searchParams.toString()
         }, {replace: true});
       } else {
@@ -327,7 +331,7 @@ const Practice = () => {
           </div>
         </div>
       </div>
-      {showTutorial && <Tutorial onClose={() => setShowTutorial(false)} />}
+      {showTutorial && (isJudgement ? <JudgementTutorial onClose={() => setShowTutorial(false)} /> : <Tutorial onClose={() => setShowTutorial(false)} />)}
     </div>
   );
 };

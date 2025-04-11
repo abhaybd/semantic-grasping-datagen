@@ -11,12 +11,14 @@ from types_boto3_s3 import S3Client
 from utils import list_s3_files
 
 BUCKET_NAME = "prior-datasets"
+SYNTHETIC_ANNOT_PREFIX = "semantic-grasping/annotations-synthetic/"
+HUMAN_ANNOT_PREFIX = "semantic-grasping/annotations/"
 JUDGEMENT_PREFIX = "semantic-grasping/judgements/"
 
 def get_args():
     args = argparse.ArgumentParser()
-    args.add_argument("--url", default="http://localhost:3000/judgement")
-    args.add_argument("--annot-prefix", default="semantic-grasping/annotations-synthetic/")
+    args.add_argument("--url", default="http://localhost:3000/practice")
+    args.add_argument("--synthetic", action="store_true", help="Use synthetic annotations.")
     args.add_argument("-p", "--prolific-code")
     args.add_argument("-r", "--prolific-rejection-code")
     args.add_argument("-s", "--prolific-study-id")
@@ -60,11 +62,11 @@ def judged_annotation_ids(s3: S3Client):
 
 def main():
     args = get_args()
-    assert args.annot_prefix.endswith("/"), "annot_prefix must end with a slash"
 
     s3 = boto3.client("s3")
 
-    annotation_ids = get_annotation_ids(s3, args.annot_prefix)
+    annot_prefix = SYNTHETIC_ANNOT_PREFIX if args.synthetic else HUMAN_ANNOT_PREFIX
+    annotation_ids = get_annotation_ids(s3, annot_prefix)
     if not args.overwrite:
         already_judged = set(judged_annotation_ids(s3))
         annotation_ids = [annot_id for annot_id in annotation_ids if annot_id not in already_judged]
@@ -82,7 +84,6 @@ def main():
             "idx": 0,
             "judgements": schedule_items
         }
-        print(json.dumps(schedule, indent=2))
         schedule_encoded = urllib.parse.quote_plus(base64.b64encode(json.dumps(schedule).encode()).decode())
         url = f"{args.url}?judgement_schedule={schedule_encoded}"
         if args.prolific_code:
@@ -91,6 +92,7 @@ def main():
                 url += f"&prolific_rejection_code={args.prolific_rejection_code}"
         if args.prolific_study_id:
             url += f"&study_id={args.prolific_study_id}"
+        url += "&judgement=true"
         urls.append(url)
     
     if args.output:

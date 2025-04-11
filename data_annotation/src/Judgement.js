@@ -94,10 +94,10 @@ const Judgement = () => {
   }, [annotation]);
 
   useEffect(() => {
-    const hasSeenTutorial = localStorage.getItem('judgementTutorialSeen');
+    const hasSeenTutorial = localStorage.getItem('hasSeenJudgementTutorial');
     if (!hasSeenTutorial) {
       setShowTutorial(true);
-      localStorage.setItem('judgementTutorialSeen', 'true');
+      localStorage.setItem('hasSeenJudgementTutorial', 'true');
     }
   }, []);
 
