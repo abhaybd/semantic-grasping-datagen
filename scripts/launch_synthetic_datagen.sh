@@ -18,4 +18,5 @@ gantry run --workspace ai2/abhayd --budget ai2/prior \
         --collage_size 2 2 \
         --resolution 640 480 \
         --blacklist_file asset_blacklist.txt \
+        --batch-ids-file /results/batch_ids.txt \
         --out_dir /data/abhayd/semantic-grasping-datasets/${DATASET_NAME}/annotations

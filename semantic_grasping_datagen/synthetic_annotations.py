@@ -5,6 +5,8 @@ import re
 import json
 import argparse
 import time
+import signal
+from contextlib import contextmanager
 
 if os.environ.get("PYOPENGL_PLATFORM") is None:
     os.environ["PYOPENGL_PLATFORM"] = "egl"
@@ -54,18 +56,28 @@ def get_args():
     submit_parser = subparsers.add_parser("submit")
     submit_parser.add_argument("categories_file")
     submit_parser.add_argument("data_dir")
+    submit_parser.add_argument("--batch-ids-file", help="If specified, write batch IDs to this file")
     submit_parser.add_argument("--collage_size", nargs=2, type=int, default=(2, 2))
     submit_parser.add_argument("--resolution", nargs=2, type=int, default=(640, 480), help="(width, height) in pixels")
     submit_parser.add_argument("--blacklist_file")
-    submit_parser.add_argument("--out_dir", help="If specified, wait for batch to finish and save results to this directory")
+    submit_parser.add_argument("--out_dir", help="If specified, wait for batch to finish and save results to this directory. --batch-ids-file must also be specified.")
     submit_parser.set_defaults(func=submit)
 
     retrieve_parser = subparsers.add_parser("retrieve")
+    retrieve_parser.add_argument("batch_ids_file")
     retrieve_parser.add_argument("out_dir")
-    retrieve_parser.add_argument("batch_ids", nargs="+")
     retrieve_parser.set_defaults(func=retrieve)
 
     return parser.parse_args()
+
+@contextmanager
+def block_signals(signals: list[int]):
+    previous_blocked = signal.pthread_sigmask(signal.SIG_BLOCK, [])
+    try:
+        signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+        yield
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous_blocked)
 
 def create_scene(object_mesh: trimesh.Trimesh, grasp: np.ndarray):
     scene = trimesh.Scene([object_mesh])
@@ -249,6 +261,15 @@ def create_query(object_category: str, object_id: str, grasp_id: int, collage: I
     return request
 
 def submit(args, client: OpenAI):
+    if args.out_dir and not args.batch_ids_file:
+        raise ValueError("If --out-dir is specified, --batch-ids-file must also be specified")
+
+    # If the batch IDs file exists, skip resubmission
+    if args.batch_ids_file and os.path.exists(args.batch_ids_file):
+        print("Batch IDs file exists, skipping resubmission")
+        retrieve(args, client)
+        return
+
     with open(args.categories_file, "r") as f:
         categories = f.read().strip().splitlines()
     with open(args.blacklist_file, "r") as f:
@@ -274,7 +295,6 @@ def submit(args, client: OpenAI):
             scene = create_scene(object_mesh, grasp)
             views = generate_views(renderer, scene, n_views, cam_K, args.resolution)
             collage = create_collage(views, *args.collage_size)
-            # collage.save(f"tmp/{category}__{obj_id}__{grasp_idx}.png")
             query = create_query(category, obj_id, grasp_idx, collage)
             bytes_to_write = (json.dumps(query) + "\n").encode("utf-8")
             if batch_files[-1].tell() + len(bytes_to_write) > MAX_BATCH_SIZE_BYTES:
@@ -283,21 +303,24 @@ def submit(args, client: OpenAI):
             total_annotations += 1
     print(f"Total annotations: {total_annotations}")
 
-    batch_file_ids = []
-    for batch_file in batch_files:
-        batch_file.seek(0)
-        batch_file_id = client.files.create(file=batch_file, purpose="batch").id
-        batch_file_ids.append(batch_file_id)
+    with block_signals([signal.SIGINT]):  # make sure no preemption during batch submission
+        batch_file_ids = []
+        for batch_file in batch_files:
+            batch_file.seek(0)
+            batch_file_id = client.files.create(file=batch_file, purpose="batch").id
+            batch_file_ids.append(batch_file_id)
 
-    batch_ids = []
-    for batch_file_id in batch_file_ids:
-        batch = client.batches.create(input_file_id=batch_file_id, endpoint="/v1/chat/completions", completion_window="24h")
-        batch_ids.append(batch.id)
+        batch_ids = []
+        for batch_file_id in batch_file_ids:
+            batch = client.batches.create(input_file_id=batch_file_id, endpoint="/v1/chat/completions", completion_window="24h")
+            batch_ids.append(batch.id)
 
-    print(f"Submitted {len(batch_ids)} batch job(s) with ID(s): {' '.join(batch_ids)}")
+        print(f"Submitted {len(batch_ids)} batch job(s) with ID(s): {' '.join(batch_ids)}")
+        if args.batch_ids_file:
+            with open(args.batch_ids_file, "w") as f:
+                f.write("\n".join(batch_ids))
 
     if args.out_dir:
-        args.batch_ids = batch_ids
         retrieve(args, client)
 
 
@@ -305,8 +328,11 @@ def retrieve(args, client: OpenAI):
     os.makedirs(args.out_dir, exist_ok=True)
     done_statuses = ["completed", "expired", "cancelled", "failed"]
 
+    with open(args.batch_ids_file, "r") as f:
+        batch_ids = f.read().strip().splitlines()
+
     results_lines = []
-    for batch_id in args.batch_ids:
+    for batch_id in batch_ids:
         time_to_wait = 5
         while (batch := client.batches.retrieve(batch_id)).status not in done_statuses:
             print(f"Batch job {batch_id} is {batch.status}, waiting {time_to_wait} seconds before checking again")
