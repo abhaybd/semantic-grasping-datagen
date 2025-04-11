@@ -59,7 +59,6 @@ class TaskGraspScanLibrary:
         raise ValueError(f"Scan {object_id}_{scan_id} not found")
     
     def __getitem__(self, idx: int) -> dict[str, Any]:
-        """Returns (object_name, (rgb, depth, cam_params), fused_pc)"""
         dirname = os.path.dirname(self.rgb_paths[idx])
         object_id = os.path.basename(dirname)
         object_name = object_id.split("_", 1)[1].replace("_", " ")
@@ -85,6 +84,11 @@ class TaskGraspScanLibrary:
         else:
             registered_grasps = None
 
+        if os.path.exists(rgb_path[:-len("_color.png")] + "_segmented_pc.npy"):
+            segmented_pc = np.load(rgb_path[:-len("_color.png")] + "_segmented_pc.npy")
+        else:
+            segmented_pc = None
+
         fused_grasps = []
         for grasp_dirname in sorted(os.listdir(os.path.join(dirname, "grasps")), key=int):
             grasp = np.load(os.path.join(dirname, "grasps", grasp_dirname, "grasp.npy"))
@@ -109,6 +113,7 @@ class TaskGraspScanLibrary:
             "fused_pc": fused_pc,
             "fused_grasps": fused_grasps,
             "registered_grasps": registered_grasps,
+            "segmented_pc": segmented_pc,
         }
 
     def __iter__(self):
