@@ -13,6 +13,7 @@ function Done() {
     <div className="done-body">
       <h2>Thank you for your submission!</h2>
       <p>You can close this tab now.</p>
+      <p>If you are a prolific participant, you should not have been redirected to this page. Please contact the researchers with your prolific ID.</p>
     </div>
   );
 }

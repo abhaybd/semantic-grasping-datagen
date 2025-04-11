@@ -167,8 +167,11 @@ const Judgement = () => {
       }
 
       if (judgementSchedule.idx + 1 === judgementSchedule.judgements.length) {
-        alert("All judgements completed!");
-        navigate("/");
+        if (searchParams.has("prolific_code")) {
+          window.location.href = `https://app.prolific.com/submissions/complete?cc=${searchParams.get("prolific_code")}`;
+        } else {
+          navigate('/done', { replace: true });
+        }
       } else {
         const newSchedule = {
           ...judgementSchedule,
@@ -235,6 +238,10 @@ const Judgement = () => {
               <div>
                 <h3 className="form-subtitle">Annotation Details</h3>
                 <div className="annotation-details">
+                  <div>
+                    <strong>Object Category:</strong> {annotation.obj.object_category}
+                  </div>
+                  <br />
                   <div className="detail-row">
                     <strong>Grasp Description:</strong>
                     <p>{annotation.grasp_description}</p>
@@ -263,6 +270,7 @@ const Judgement = () => {
                         setJudgement("accurate");
                       }}
                       disabled={!isFullyLoaded}
+                      data-judgement="accurate"
                     >
                       <FaCheckCircle className="judgement-icon" />
                       Accurate
@@ -274,6 +282,7 @@ const Judgement = () => {
                         setJudgement("uncertain");
                       }}
                       disabled={!isFullyLoaded}
+                      data-judgement="uncertain"
                     >
                       <FaQuestionCircle className="judgement-icon" />
                       Unsure
@@ -283,6 +292,7 @@ const Judgement = () => {
                       className={`judgement-button ${judgement === "inaccurate" ? "selected" : ""}`}
                       onClick={() => setJudgement("inaccurate")}
                       disabled={!isFullyLoaded}
+                      data-judgement="inaccurate"
                     >
                       <FaTimesCircle className="judgement-icon" />
                       Inaccurate
