@@ -32,10 +32,9 @@ GRASP_VOLUME_STYLE = "box"  # "sphere" or "box"
 SYS_PROMPT = """
 You are an expert in robotic grasp analysis. Your task is to generate precise and concise descriptions of robotic grasps in images.
 Each image contains a robotic gripper interacting with an object. A red rectangle marks the area between the fingers of the gripper, which helps you identify the grasp location.
-Your goal is to describe where the gripper is grasping the object and how it is oriented. Follow these guidelines:
+Your goal is to describe where the gripper is grasping the object and what the fingers are pinching. Follow these guidelines:
 
-- Clearly specify the grasp location on the object (e.g., "on the handle," "near the rim," "on the body," "at the base").  
-- Describe the gripper's orientation (e.g., "oriented horizontally," "tilted at an angle," "aligned with the object's main axis").  
+- Clearly specify the grasp location on the object (e.g., "on the handle," "near the rim," "on the body," "at the base").
 - Indicate how the fingers of the gripper interact with the object (e.g., "gripping the inner and outer surfaces," "pinching from opposite sides").  
 - The image may contain multiple viewpoints, but your description should focus on the grasp itself rather than commenting on different perspectives.  
 - Do not speculate about grasp stability or effectiveness.  
@@ -43,7 +42,7 @@ Your goal is to describe where the gripper is grasping the object and how it is 
 - Do not mention the red rectangle in your description, it is only for visualization.
 
 Example of a good description:
-"The grasp is on the rim of the pan, approximately opposite the handle. It is oriented vertically and the fingers are gripping the inside and outside of the pan's rim."
+"The grasp is on the rim of the pan, approximately opposite the handle. The fingers are gripping the inside and outside of the pan's rim."
 
 Your response should always describe the grasp clearly and concisely without asking for additional input.
 """.strip()
