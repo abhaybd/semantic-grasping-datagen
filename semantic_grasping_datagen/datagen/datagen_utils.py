@@ -129,6 +129,8 @@ class MeshLibrary(object):
         return self.library[category]
 
     def sample(self, n_categories: int | None = None, replace=False):
+        if n_categories == 0:
+            return [], []
         ret_keys: list[tuple[str, str]] = []
         ret_meshes: list[trimesh.Trimesh] = []
         categories = np.random.choice(list(self.library.keys()), size=n_categories or 1, replace=replace)

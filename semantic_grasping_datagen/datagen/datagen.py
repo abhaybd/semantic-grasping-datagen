@@ -361,7 +361,10 @@ def sample_arrangement(
 
 def sample_scene(datagen_cfg: DatagenConfig, annotations: list[Annotation], object_library: MeshLibrary, background_library: MeshLibrary, support_library: MeshLibrary):
     n_objects = min(np.random.randint(*datagen_cfg.n_objects_range), len(object_library.categories()))
-    n_background = min(np.random.randint(*datagen_cfg.n_background_range), len(background_library.categories()))
+    if datagen_cfg.n_background_range[1] > 0:
+        n_background = min(np.random.randint(*datagen_cfg.n_background_range), len(background_library.categories()))
+    else:
+        n_background = 0
 
     object_keys, object_meshes = object_library.sample(n_objects)
     background_keys, background_meshes = background_library.sample(n_background, replace=True)

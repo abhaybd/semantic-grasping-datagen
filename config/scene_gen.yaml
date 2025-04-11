@@ -35,8 +35,8 @@ datagen:
   min_annots_per_view: 2
 
   # Object parameters
-  n_objects_range: [4, 6]
-  n_background_range: [4, 6]
+  n_objects_range: [6, 12]
+  n_background_range: [0, 0]
   max_grasp_dist: 1.0  # meters
 
   # Lighting parameters
