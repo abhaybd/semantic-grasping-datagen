@@ -120,6 +120,7 @@ def render(out_dir: str, scene_dir: str):
     view_rgb: list[np.ndarray] = []
     view_xyz: list[np.ndarray] = []
     view_poses: list[np.ndarray] = []  # in standard camera axes conventions
+    view_cam_params: list[np.ndarray] = []
     for view in scene_data["views"]:
         cam_K = np.array(view["cam_K"])
         cam_pose_trimesh = np.array(view["cam_pose"])
@@ -133,6 +134,7 @@ def render(out_dir: str, scene_dir: str):
         ])
         cam_pose_standard = cam_pose_trimesh @ standard_to_trimesh_cam_trf
         view_poses.append(cam_pose_standard)
+        view_cam_params.append(cam_K)
 
         color, depth = renderer.render(scene, flags=pyrender.RenderFlags.SHADOWS_DIRECTIONAL)
         xyz = backproject(cam_K, depth).astype(np.float32)
@@ -160,7 +162,7 @@ def render(out_dir: str, scene_dir: str):
     n_observations = 0
     with block_signals([signal.SIGINT]):
         with h5py.File(out_scene_file, "w") as f:
-            for view_idx, (rgb, xyz, normals, pose, observations) in enumerate(zip(view_rgb, view_xyz, view_normals, view_poses, view_observations)):
+            for view_idx, (rgb, xyz, normals, pose, cam_params, observations) in enumerate(zip(view_rgb, view_xyz, view_normals, view_poses, view_cam_params, view_observations)):
                 view_group = f.create_group(f"view_{view_idx}")
 
                 rgb_ds = view_group.create_dataset("rgb", data=rgb, compression="gzip")
@@ -172,6 +174,7 @@ def render(out_dir: str, scene_dir: str):
                 view_group.create_dataset("xyz", data=xyz, compression="gzip")
                 view_group.create_dataset("normals", data=normals, compression="gzip")
                 view_group.create_dataset("view_pose", data=pose, compression="gzip")
+                view_group.create_dataset("cam_params", data=cam_params, compression="gzip")
 
                 for obs_idx, (grasp_pose, annot, annot_id) in enumerate(observations):
                     obs_group = view_group.create_group(f"obs_{obs_idx}")

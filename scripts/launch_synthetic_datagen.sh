@@ -1,6 +1,14 @@
-DATASET_NAME=0409_2242
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 DATASET_NAME"
+    exit 1
+fi
+
+NAME="synthetic_annotations_${1}"
+DATASET_NAME=$1
 
 gantry run --workspace ai2/abhayd --budget ai2/prior \
+    --name ${NAME} \
+    --task-name ${NAME} \
     --weka prior-default:/data \
     --env-secret OPENAI_API_KEY=OPENAI_API_KEY \
     --gpus 1 \
