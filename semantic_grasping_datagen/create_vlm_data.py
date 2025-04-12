@@ -125,17 +125,17 @@ def main():
 
     df = pd.read_csv(args.csv_path)
 
-    # copy_thread = threading.Thread(target=copy_images, args=(df, args.data_dir, args.out_dir, args.n_proc))
-    # copy_thread.start()
+    copy_thread = threading.Thread(target=copy_images, args=(df, args.data_dir, args.out_dir, args.n_proc))
+    copy_thread.start()
 
     lines: list[str] = []
     submit_semaphore = threading.Semaphore(4 * args.n_proc)
     with ProcessPoolExecutor(max_workers=args.n_proc) as executor:
-        def on_job_done(_):
-            submit_semaphore.release()
-            pbar.update(1)
-
         with tqdm(total=len(df), desc="Constructing samples") as pbar:
+            def on_job_done(_):
+                submit_semaphore.release()
+                pbar.update(1)
+
             futures: list[Future] = []
             for _, row in df.iterrows():
                 submit_semaphore.acquire()
@@ -149,9 +149,9 @@ def main():
     with open(os.path.join(args.out_dir, f"{args.format}_data.json"), "w") as f:
         json.dump(lines, f, indent=2)
 
-    # if copy_thread.is_alive():
-    #     print("Waiting for image copy thread to finish...")
-    # copy_thread.join()
+    if copy_thread.is_alive():
+        print("Waiting for image copy thread to finish...")
+    copy_thread.join()
 
 if __name__ == "__main__":
     main()
