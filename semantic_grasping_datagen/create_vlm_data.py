@@ -1,6 +1,6 @@
 import argparse
 import os
-from concurrent.futures import ProcessPoolExecutor, wait, ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, Future, as_completed
 import threading
 
 import pandas as pd
@@ -128,7 +128,7 @@ def main():
     # copy_thread = threading.Thread(target=copy_images, args=(df, args.data_dir, args.out_dir, args.n_proc))
     # copy_thread.start()
 
-    lines = []
+    lines: list[str] = []
     submit_semaphore = threading.Semaphore(4 * args.n_proc)
     with ProcessPoolExecutor(max_workers=args.n_proc) as executor:
         def on_job_done(_):
@@ -136,13 +136,14 @@ def main():
             pbar.update(1)
 
         with tqdm(total=len(df), desc="Constructing samples") as pbar:
-            futures = []
+            futures: list[Future] = []
             for _, row in df.iterrows():
                 submit_semaphore.acquire()
                 future = executor.submit(create_sample, args.data_dir, row, args.format)
                 future.add_done_callback(on_job_done)
                 futures.append(future)
-            wait(futures)
+            for future in as_completed(futures):
+                lines.append(future.result())
 
     print(f"Generated {len(lines)} data points, saving to {os.path.join(args.out_dir, f'{args.format}_data.json')}")
     with open(os.path.join(args.out_dir, f"{args.format}_data.json"), "w") as f:
