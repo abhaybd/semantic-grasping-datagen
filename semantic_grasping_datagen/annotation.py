@@ -32,6 +32,7 @@ class Judgement(BaseModel, frozen=True):
     user_id: str = ""
     study_id: str = ""
     time_taken: float = -1.0
+    correct_grasp_description: str | None = None
 
 class QuestionResult(BaseModel, frozen=True):
     question_idx: int
