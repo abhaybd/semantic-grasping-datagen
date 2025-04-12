@@ -3,6 +3,7 @@ import DataAnnotation from './DataAnnotation';
 import Practice from './Practice';
 import Reference from './Reference';
 import Judgement from './Judgement';
+import Info from './Info';
 import { Routes, Route, Navigate } from 'react-router';
 import Eval from './Eval';
 import './App.css';
@@ -44,6 +45,7 @@ function App() {
           <Route path="/done" element={<Done />} />
           <Route path="/reference" element={<Reference />} />
           <Route path="/judgement" element={<Judgement />} />
+          <Route path="/info" element={<Info />} />
           <Route path="/404" element={<NotFound />} />
           {process.env.NODE_ENV === "development" && <Route path="/eval" element={<Eval />} />}
           <Route path="*" element={<Navigate to="/404" />} />

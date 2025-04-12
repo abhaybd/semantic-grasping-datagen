@@ -34,3 +34,29 @@ body {
     text-align: center;
     color: #ff69b4;
 }
+
+.info-body {
+    padding: 20px;
+    width: 80vw;
+    margin: 0 auto;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.info-content {
+    background-color: #f5f5f5;
+    padding: 20px;
+    border-radius: 8px;
+    margin-top: 20px;
+    text-align: left;
+    width: fit-content;
+}
+
+.info-content p {
+    margin: 10px 0;
+    font-size: 16px;
+    white-space: nowrap;
+}

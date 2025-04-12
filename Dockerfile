@@ -1,3 +1,6 @@
+ARG GIT_COMMIT
+ARG TIMESTAMP
+
 # Use an official Node.js runtime as a parent image
 FROM node:20 AS build
 
@@ -14,6 +17,8 @@ RUN cd data_annotation && npm install
 COPY data_annotation ./data_annotation
 
 # Build the React app
+ENV REACT_APP_GIT_COMMIT=$GIT_COMMIT
+ENV REACT_APP_TIMESTAMP=$TIMESTAMP
 RUN cd data_annotation && npm run build
 
 # Use an official Python runtime as a parent image
