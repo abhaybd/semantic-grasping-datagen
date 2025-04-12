@@ -125,8 +125,8 @@ def main():
 
     df = pd.read_csv(args.csv_path)
 
-    copy_thread = threading.Thread(target=copy_images, args=(df, args.data_dir, args.out_dir, args.n_proc))
-    copy_thread.start()
+    # copy_thread = threading.Thread(target=copy_images, args=(df, args.data_dir, args.out_dir, args.n_proc))
+    # copy_thread.start()
 
     lines = []
     submit_semaphore = threading.Semaphore(4 * args.n_proc)
@@ -148,9 +148,9 @@ def main():
     with open(os.path.join(args.out_dir, f"{args.format}_data.json"), "w") as f:
         json.dump(lines, f, indent=2)
 
-    if copy_thread.is_alive():
-        print("Waiting for image copy thread to finish...")
-    copy_thread.join()
+    # if copy_thread.is_alive():
+    #     print("Waiting for image copy thread to finish...")
+    # copy_thread.join()
 
 if __name__ == "__main__":
     main()
