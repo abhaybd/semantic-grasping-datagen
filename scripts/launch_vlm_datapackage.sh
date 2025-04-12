@@ -1,4 +1,5 @@
 DATASET_NAME="0410_2243"
+FORMAT="molmo"
 NAME="vlm_datapackage_${DATASET_NAME}"
 
 gantry run --workspace ai2/abhayd --budget ai2/prior \
@@ -15,7 +16,8 @@ gantry run --workspace ai2/abhayd --budget ai2/prior \
     --allow-dirty \
     -- \
     python semantic_grasping_datagen/create_vlm_data.py \
-        /data/abhayd/semantic-grasping-datasets/${DATASET_NAME}/robotpoint_data \
+        /data/abhayd/semantic-grasping-datasets/${DATASET_NAME}/${FORMAT}_data \
         /data/abhayd/semantic-grasping-datasets/${DATASET_NAME}/observations \
         /data/abhayd/semantic-grasping-datasets/${DATASET_NAME}/dataset.csv \
-        --format robopoint
+        --format ${FORMAT} \
+        --n-proc 32

@@ -1,5 +1,7 @@
 import argparse
 import os
+from concurrent.futures import ProcessPoolExecutor, wait, ThreadPoolExecutor
+import threading
 
 import pandas as pd
 import numpy as np
@@ -7,12 +9,15 @@ import h5py
 from PIL import Image
 import json
 
+from semantic_grasping_datagen.utils import tqdm
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("out_dir")
     parser.add_argument("data_dir")
     parser.add_argument("csv_path")
     parser.add_argument("--format", type=str, default="robopoint", choices=["robopoint", "molmo"])
+    parser.add_argument("--n-proc", type=int, default=16)
     return parser.parse_args()
 
 
@@ -71,40 +76,81 @@ def get_grasp_point(grasp_pose: np.ndarray, cam_params: np.ndarray, width: int, 
     points_frac = points_px / np.array([width, height])
     return points_frac
 
+def copy_image(scene_path: str, scene_id: str, view_id: str, rgb_key: str, data_dir: str, out_dir: str):
+    img_relpath = os.path.join("images", f"{scene_id}-{view_id}.png")
+
+    with h5py.File(os.path.join(data_dir, scene_path), "r") as f:
+        img: Image.Image = Image.fromarray(f[rgb_key][:]).convert("RGB")
+    img.save(os.path.join(out_dir, img_relpath))
+
+def copy_images(df: pd.DataFrame, data_dir: str, out_dir: str, n_proc: int):
+    unique_views = set()
+    for _, row in df.iterrows():
+        scene_path = row["scene_path"]
+        scene_id = row["scene_id"]
+        view_id = row["view_id"]
+        rgb_key = row["rgb_key"]
+        unique_views.add((scene_path, scene_id, view_id, rgb_key))
+
+    with ThreadPoolExecutor(max_workers=n_proc) as executor:
+        futures = []
+        for scene_path, scene_id, view_id, rgb_key in unique_views:
+            futures.append(executor.submit(copy_image, scene_path, scene_id, view_id, rgb_key, data_dir, out_dir))
+        wait(futures)
+
+def create_sample(data_dir: str, row: pd.Series, format: str):
+    sample_fn = create_robopoint_sample if format == "robopoint" else create_molmo_sample
+    scene_id = row["scene_id"]
+    view_id = row["view_id"]
+    obs_id = row["obs_id"]
+
+    grasp_desc = row["annot"]
+
+    img_relpath = os.path.join("images", f"{scene_id}-{view_id}.png")
+
+    with h5py.File(os.path.join(data_dir, row["scene_path"]), "r") as f:
+        img_h, img_w = f[row["rgb_key"]].shape[:-1]
+        grasp_pose = f[row["grasp_pose_key"]][:]
+        cam_params = f[view_id]["cam_params"][:]
+
+    grasp_pt = get_grasp_point(grasp_pose, cam_params, img_w, img_h)
+    sample = sample_fn(scene_id, view_id, obs_id, img_relpath, grasp_desc, grasp_pt)
+    return sample
+
+
 def main():
     args = get_args()
     os.makedirs(args.out_dir, exist_ok=True)
     os.makedirs(os.path.join(args.out_dir, "images"), exist_ok=True)
 
-    sample_fn = create_robopoint_sample if args.format == "robopoint" else create_molmo_sample
-
     df = pd.read_csv(args.csv_path)
+
+    copy_thread = threading.Thread(target=copy_images, args=(df, args.data_dir, args.out_dir, args.n_proc))
+    copy_thread.start()
+
     lines = []
-    for _, row in df.iterrows():
-        scene_id = row["scene_id"]
-        view_id = row["view_id"]
-        obs_id = row["obs_id"]
+    submit_semaphore = threading.Semaphore(4 * args.n_proc)
+    with ProcessPoolExecutor(max_workers=args.n_proc) as executor:
+        def on_job_done(_):
+            submit_semaphore.release()
+            pbar.update(1)
 
-        grasp_desc = row["annot"]
-
-        img_relpath = os.path.join("images", f"{scene_id}-{view_id}.png")
-
-        with h5py.File(os.path.join(args.data_dir, row["scene_path"]), "r") as f:
-            if not os.path.exists(os.path.join(args.out_dir, img_relpath)):
-                img: Image.Image = Image.fromarray(f[row["rgb_key"]][:]).convert("RGB")
-                img.save(os.path.join(args.out_dir, img_relpath))
-
-            img_h, img_w = f[row["rgb_key"]].shape[:-1]
-            grasp_pose = f[row["grasp_pose_key"]][:]
-            cam_params = f[view_id]["cam_params"][:]
-            grasp_pt = get_grasp_point(grasp_pose, cam_params, img_w, img_h)
-
-            sample = sample_fn(scene_id, view_id, obs_id, img_relpath, grasp_desc, grasp_pt)
-            lines.append(sample)
+        with tqdm(total=len(df), desc="Constructing samples") as pbar:
+            futures = []
+            for _, row in df.iterrows():
+                submit_semaphore.acquire()
+                future = executor.submit(create_sample, args.data_dir, row, args.format)
+                future.add_done_callback(on_job_done)
+                futures.append(future)
+            wait(futures)
 
     print(f"Generated {len(lines)} data points, saving to {os.path.join(args.out_dir, f'{args.format}_data.json')}")
     with open(os.path.join(args.out_dir, f"{args.format}_data.json"), "w") as f:
         json.dump(lines, f, indent=2)
+
+    if copy_thread.is_alive():
+        print("Waiting for image copy thread to finish...")
+    copy_thread.join()
 
 if __name__ == "__main__":
     main()
