@@ -17,7 +17,13 @@ RUN cd data_annotation && npm install
 COPY data_annotation ./data_annotation
 
 # Build the React app
-RUN REACT_APP_GIT_COMMIT=$GIT_COMMIT REACT_APP_TIMESTAMP=$TIMESTAMP; cd data_annotation && npm run build
+RUN <<EOF
+export REACT_APP_GIT_COMMIT=$GIT_COMMIT
+export REACT_APP_TIMESTAMP=$TIMESTAMP
+cd data_annotation
+npm run build
+EOF
+
 
 # Use an official Python runtime as a parent image
 FROM python:3.11
