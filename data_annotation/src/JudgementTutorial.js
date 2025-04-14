@@ -17,9 +17,10 @@ const JudgementTutorial = ({ onClose }) => {
             This is an interface for you to judge the quality of existing grasp descriptions.
             You will be given a 3D model of an object, along with a proposed way to grasp it.
             Given a description of how the object is being grasped, your job is to judge whether it is an accurate description of the grasp.
+            The grasp is represented by the green "pitchfork", showing the position and orientation of the robot's parallel-jaw gripper.
           </p>
           <p>
-            If the description is inaccurate, you should provide a corrected description of how the object should be grasped.
+            If the description is inaccurate, you should provide a corrected description of how the object is being grasped.
             In general, you should adhere to the style of the provided description, and only correct factual errors.
           </p>
           <p>
@@ -33,7 +34,7 @@ const JudgementTutorial = ({ onClose }) => {
           </p>
           <ul>
             <li><strong>Specific:</strong> Clearly identify the exact location of the grasp on the object</li>
-            <li><strong>Detailed:</strong> Include information about the orientation and approach of the grasp</li>
+            <li><strong>Detailed:</strong> Include information about where the fingers are positioned</li>
             <li><strong>Objective:</strong> Focus on describing the grasp itself, not its quality or effectiveness</li>
             <li><strong>Concise:</strong> Use clear, direct language without unnecessary details</li>
           </ul>
@@ -48,7 +49,6 @@ const JudgementTutorial = ({ onClose }) => {
           </p>
           <ul>
             <li>Specifically identifies the location (spout where it connects to the body)</li>
-            <li>Describes the orientation (parallel to the base)</li>
             <li>Explains how the fingers are positioned (closing on either side)</li>
             <li>Focuses only on describing the grasp itself</li>
           </ul>
