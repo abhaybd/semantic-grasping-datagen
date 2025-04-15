@@ -48,7 +48,10 @@ def get_annotation_ids(s3: S3Client, annot_prefix: str):
     keys = list_s3_files(s3, BUCKET_NAME, annot_prefix)
     for key in keys:
         filename = os.path.basename(key)[:-len(".json")]
-        ret.append(filename)
+        parts = filename.split("__")
+        if len(parts) == 5:
+            parts = parts[1:]
+        ret.append("__".join(parts))
     return ret
 
 def judged_annotation_ids(s3: S3Client):
@@ -67,9 +70,12 @@ def main():
 
     annot_prefix = SYNTHETIC_ANNOT_PREFIX if args.synthetic else HUMAN_ANNOT_PREFIX
     annotation_ids = get_annotation_ids(s3, annot_prefix)
+    print(f"Total annotations to judge: {len(annotation_ids)}")
     if not args.overwrite:
         already_judged = set(judged_annotation_ids(s3))
+        print(f"Already judged {len(already_judged)} annotations")
         annotation_ids = [annot_id for annot_id in annotation_ids if annot_id not in already_judged]
+        print(f"{len(annotation_ids)} annotations left to judge")
     random.shuffle(annotation_ids)
 
     annotations = [parse_annot_id(annot_id) for annot_id in annotation_ids]
