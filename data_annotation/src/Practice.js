@@ -20,7 +20,7 @@ export const QUESTIONS = [
       },
       {
         id: 'b',
-        text: "The grasp is on the middle of the handle of the mug, coming from above and to the side at an angle. The fingers are grasping either side of the handle.",
+        text: "The grasp is on the middle of the handle of the mug. The fingers are grasping either side of the handle.",
         feedback: "Correct! This description focuses on the position and orientation of the grasp without judging its quality.",
         correct: true,
       },
@@ -50,19 +50,19 @@ export const QUESTIONS = [
       },
       {
         id: 'b',
-        text: "The grasp is on the wrong side of the pan, coming from above and grasping the inside and outside of the pan's rim.",
+        text: "The grasp is on the wrong side of the pan, grasping the inside and outside of the pan's rim.",
         feedback: "Incorrect. The description should not include judgments about whether the grasp is right or wrong.",
       },
       {
         id: 'c',
-        text: "The grasp is on the rim of the pan, approximately opposite the handle. It is oriented vertically and grasping the inside and outside of the pan's rim.",
+        text: "The grasp is on the rim of the pan, approximately opposite the handle. It is grasping the inside and outside of the pan's rim.",
         feedback: "Correct! This description focuses on the position and orientation of the grasp without judging its quality.",
         correct: true,
       },
       {
         id: 'd',
-        text: "The grasp is on the rim of the pan, opposite the handle.",
-        feedback: "Incorrect. While factual, the description should also include information about the orientation of the grasp.",
+        text: "The grasp is on the handle of the pan.",
+        feedback: "Incorrect. The grasp is not on the handle, but on the rim.",
       }
     ]
   },

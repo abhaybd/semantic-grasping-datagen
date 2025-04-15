@@ -42,7 +42,7 @@ const JudgementTutorial = ({ onClose }) => {
           <h3>Example of a Good Description</h3>
           <img src={teapot_img} alt="Teapot example" className="tutorial-image" />
           <blockquote>
-            "The grasp is on the spout of the teapot, where it connects to the body. The grasp is oriented parallel to the base of the teapot, and the fingers are closing on either side of the spout."
+            "The grasp is on the spout of the teapot, where it connects to the body. The fingers are closing on either side of the spout."
           </blockquote>
           <p>
             This description is good because it:
