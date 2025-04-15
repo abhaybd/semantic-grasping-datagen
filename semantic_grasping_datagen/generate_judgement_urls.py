@@ -44,6 +44,10 @@ def parse_annot_id(annot_id: str):
     }
 
 def get_annotation_ids(s3: S3Client, annot_prefix: str):
+    """
+    Returns list of <study_id>__<object_category>__<object_id>__<grasp_id>__<user_id> for all annotations.
+    Might return some without study_id.
+    """
     ret: list[str] = []
     keys = list_s3_files(s3, BUCKET_NAME, annot_prefix)
     for key in keys:
@@ -52,6 +56,9 @@ def get_annotation_ids(s3: S3Client, annot_prefix: str):
     return ret
 
 def judged_annotation_ids(s3: S3Client):
+    """
+    Returns list of <object_category>__<object_id>__<grasp_id>__<user_id> for all annotations that have been judged.
+    """
     ret: list[str] = []
     keys = list_s3_files(s3, BUCKET_NAME, JUDGEMENT_PREFIX)
     for key in keys:
@@ -60,6 +67,12 @@ def judged_annotation_ids(s3: S3Client):
         ret.append(annot_id)
     return ret
 
+def annot_id_to_judged_annot_id(annot_id: str):
+    parts = annot_id.split("__")
+    if len(parts) == 5:
+        parts = parts[1:]
+    return "__".join(parts)
+
 def main():
     args = get_args()
 
@@ -67,9 +80,12 @@ def main():
 
     annot_prefix = SYNTHETIC_ANNOT_PREFIX if args.synthetic else HUMAN_ANNOT_PREFIX
     annotation_ids = get_annotation_ids(s3, annot_prefix)
+    print(f"Total annotations to judge: {len(annotation_ids)}")
     if not args.overwrite:
         already_judged = set(judged_annotation_ids(s3))
-        annotation_ids = [annot_id for annot_id in annotation_ids if annot_id not in already_judged]
+        print(f"Already judged {len(already_judged)} annotations")
+        annotation_ids = [annot_id for annot_id in annotation_ids if annot_id_to_judged_annot_id(annot_id) not in already_judged]
+        print(f"{len(annotation_ids)} annotations left to judge")
     random.shuffle(annotation_ids)
 
     annotations = [parse_annot_id(annot_id) for annot_id in annotation_ids]

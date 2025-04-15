@@ -7,6 +7,7 @@ import "./DataAnnotation.css";
 import "./Judgement.css";
 import { FaCheckCircle, FaQuestionCircle, FaTimesCircle } from 'react-icons/fa';
 import { BsBoxArrowUpRight } from 'react-icons/bs';
+
 /*
 Judgement schedule looks like:
 {
@@ -65,9 +66,7 @@ const Judgement = () => {
       );
       const idx = schedule.idx;
       if (idx >= schedule.judgements.length || idx < 0) {
-        alert("Invalid schedule index!");
-        navigate("/");
-        return;
+        throw new Error(`Invalid schedule index! idx=${idx}, length=${schedule.judgements.length}`);
       }
       setJudgementSchedule(schedule);
 
@@ -81,8 +80,7 @@ const Judgement = () => {
         currentJudgement.study_id
       );
     } else {
-      alert("Missing judgement schedule!");
-      navigate("/");
+      throw new Error("Missing judgement schedule!");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, navigate]);
@@ -112,9 +110,7 @@ const Judgement = () => {
     setJudgement("");
 
     if (!category || !objectId || !graspId || !userId) {
-      alert("Missing required parameters!");
-      navigate("/");
-      return;
+      throw new Error(`Missing required parameters! category=${category}, objectId=${objectId}, graspId=${graspId}, userId=${userId}`);
     }
 
     try {
@@ -123,7 +119,12 @@ const Judgement = () => {
       );
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch annotation: HTTP ${response.status}`);
+        if (response.status === 404) {
+          const data = await response.json();
+          throw new Error(data.detail);
+        } else {
+          throw new Error(`Error fetching annotation: HTTP ${response.status}`);
+        }
       }
 
       const data = await response.json();
@@ -132,8 +133,7 @@ const Judgement = () => {
       setLoading(false);
     } catch (error) {
       console.error("Error fetching annotation:", error);
-      alert("Error fetching annotation: " + error.message);
-      setLoading(false);
+      throw error;
     }
   };
 

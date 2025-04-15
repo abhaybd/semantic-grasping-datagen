@@ -19,6 +19,13 @@ const ObjectViewer = ({ object_category, object_id, grasp_id, onFinishedLoading 
     return <primitive object={gltf.scene} />;
   };
 
+  useEffect(() => {
+    const arr = [!!object_category, !!object_id, grasp_id != null];
+    if (arr.some(Boolean) && !arr.every(Boolean)) {
+      throw new Error(`Incomplete object data: category=${object_category}, id=${object_id}, grasp_id=${grasp_id}`);
+    }
+  }, [object_category, object_id, grasp_id]);
+
   const hasData = !!object_category && !!object_id && grasp_id != null;
 
   const Spinner = () => <div className="spinner"></div>;

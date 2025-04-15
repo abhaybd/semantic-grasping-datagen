@@ -60,3 +60,20 @@ body {
     font-size: 16px;
     white-space: nowrap;
 }
+
+.error-details {
+    padding: 20px;
+    width: 800px;
+}
+  
+.error-details blockquote {
+    width: 100%;
+    margin: 0;
+    padding: 10px;
+    border-left: 4px solid #ff69b4;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    white-space: pre-line;
+    box-sizing: border-box;
+}
+  

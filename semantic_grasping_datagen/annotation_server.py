@@ -109,26 +109,32 @@ def sample_choice(arr, key):
     idx = np.random.choice(len(arr), p=weights/weights.sum())
     return arr[idx]
 
+def download_file(bucket: str, key: str, path: str):
+    try:
+        s3.download_file(bucket, key, path)
+    except:
+        raise HTTPException(status_code=404, detail=f"File not found: {key}")
+
 def load_object_data(category: str, obj_id: str) -> tuple[trimesh.Scene, np.ndarray]:
     datafile_key = f"{DATA_PREFIX}grasps/{category}_{obj_id}.h5"
     with TemporaryDirectory() as tmpdir:
         datafile_path = os.path.join(tmpdir, "data.h5")
-        s3.download_file(BUCKET_NAME, datafile_key, datafile_path)
+        download_file(BUCKET_NAME, datafile_key, datafile_path)
         with h5py.File(datafile_path, "r") as f:
             mesh_fname: str = f["object/file"][()].decode("utf-8")
             mtl_fname = mesh_fname[:-len(".obj")] + ".mtl"
             mesh_path = os.path.join(tmpdir, os.path.basename(mesh_fname))
             mtl_path = os.path.join(tmpdir, os.path.basename(mtl_fname))
             mesh_pfx = DATA_PREFIX + os.path.dirname(mesh_fname) + "/"
-            s3.download_file(BUCKET_NAME, f"{DATA_PREFIX}{mesh_fname}", mesh_path)
-            s3.download_file(BUCKET_NAME, f"{DATA_PREFIX}{mtl_fname}", mtl_path)
+            download_file(BUCKET_NAME, f"{DATA_PREFIX}{mesh_fname}", mesh_path)
+            download_file(BUCKET_NAME, f"{DATA_PREFIX}{mtl_fname}", mtl_path)
             with open(mtl_path, "r") as mtl_f:
                 for line in mtl_f.read().splitlines():
                     if m := re.fullmatch(r".+ (.+\.jpg)", line):
                         texture_fname = m.group(1)
                         assert texture_fname == os.path.basename(texture_fname), texture_fname
                         texture_path = os.path.join(tmpdir, texture_fname)
-                        s3.download_file(BUCKET_NAME, f"{mesh_pfx}{texture_fname}", texture_path)
+                        download_file(BUCKET_NAME, f"{mesh_pfx}{texture_fname}", texture_path)
 
             T = np.array(f["grasps/transforms"])
             mesh_scale = f["object/scale"][()]
