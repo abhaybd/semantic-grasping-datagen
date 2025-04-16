@@ -492,7 +492,7 @@ def get_missing_object_types(output_file, batch_size=5, implicit=True):
     if implicit:
         implicit_str = (
             " without explicitly providing instructions about the grasp description"
-            " (like point to contact or direction to approach)"
+            " (like object part to contact or direction to approach)"
         )
     else:
         implicit_str = ""
