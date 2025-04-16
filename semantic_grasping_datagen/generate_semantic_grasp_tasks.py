@@ -4,6 +4,8 @@ import json
 
 from semantic_grasping_datagen.langchain_wrapper import LangchainWrapper, ChatOpenAI
 
+MODEL_NAME = "gpt-4.1"
+
 all_categories = [
     "Banana",
     "Bag",
@@ -464,7 +466,7 @@ category_to_tasks = {
 }
 
 
-def get_missing_object_types(output_file, batch_size=10):
+def get_missing_object_types(output_file, batch_size=5):
     unused_categories = set(all_categories)  # - set(category_to_tasks.keys())
 
     output_file = os.path.expanduser(output_file)
@@ -482,52 +484,40 @@ def get_missing_object_types(output_file, batch_size=10):
 
     llm = LangchainWrapper(
         ChatOpenAI(
-            model="gpt-4.1",
+            model=MODEL_NAME,
             max_tokens=4096,
         )
     )
 
     for first_category in range(0, len(missing_categories), batch_size):
         cur_categories = missing_categories[
-                         first_category: first_category + batch_size
-                         ]
+            first_category : first_category + batch_size
+        ]
+        print(first_category, len(missing_categories), cur_categories)
 
         query = (
             "For each object type in the list below, we need to make a short list of up to 5 grasp definitions"
             " (part of the object to grasp with a single 6-DOF end effector, and relative orientation of"
             " the gripper with respect to the part to grasp). Try to make the grasps as varied as possible."
-            " Then, for each of the identified grasps, generate 2 semantic grasping tasks that require that"
-            " type of grasp (and no other) to correctly hold the object towards task"
+            " Assuming that the objects from each category are lying on a table or other surface, avoid grasps"
+            " that assume that the object needs to be approached from underneath or placed upright while holding"
+            " it from underneath. Do not assume the presence of any optional feature in an object of the given"
+            " category. If some object is too generic to identify grasps (e.g. an undetermined food item, or an"
+            " unidentified piece of fruit), feel free to return an empty list."
+            " Then, for each of the identified grasps, generate 4 semantic grasping tasks that require that"
+            " type of grasp (and not any other from the list) to correctly hold the object towards task"
             " completion. The task definition might require a second gripper for completion, but the grasp"
             " should be possible with a single gripper. Generate the output as a JSON map from object type to"
             " a list of dicts, each with a"
-            " `grasp_definition` (str) and a `semantic_tasks` short list of 2 task descriptions (str). Do not"
-            f" add any additional comments. The list of object types is\n\n{cur_categories}"
+            " `grasp_definition` (natural language str) and a `semantic_tasks` short list of 4 task descriptions"
+            " (each a natural language str). Do not add any additional comments. The list of object types"
+            f" is\n\n{cur_categories}"
         )
 
         ans = llm(query, log="grasps")
 
-        num_attempts = 0
-        success = False
-        while not success:
-            try:
-                if "```json" in ans:
-                    grasps = json.loads(ans.split("```json")[1].split("```")[0])
-                else:
-                    grasps = json.loads(ans)
-                success = True
-            except KeyboardInterrupt:
-                raise
-            except:
-                ans = llm(f"Please clean up this json structure: {ans}", log="cleanup json")
-                num_attempts += 1
-                if num_attempts == 1:
-                    continue
-                else:
-                    print(f"Failed decoding for {ans=}")
-                    break
-
-        if not success:
+        grasps = llm.extract_json(ans)
+        if grasps is None:
             continue
 
         all_grasps.update(grasps)
@@ -540,9 +530,203 @@ def get_missing_object_types(output_file, batch_size=10):
     return all_grasps
 
 
+def get_sparser_grasps(all_grasps, output_file):
+    output_file = os.path.expanduser(output_file)
+
+    if os.path.isfile(output_file):
+        with open(output_file) as f:
+            sparse_grasps = json.load(f)
+    else:
+        sparse_grasps = {}
+
+    remaining_categories = sorted(
+        list(set(all_grasps.keys()) - set(sparse_grasps.keys()))
+    )
+
+    if len(remaining_categories) == 0:
+        return sparse_grasps
+
+    llm = LangchainWrapper(
+        ChatOpenAI(
+            model=MODEL_NAME,
+            max_tokens=4096,
+        )
+    )
+
+    for it, category in enumerate(remaining_categories):
+        original_grasps = all_grasps.get(category, [])
+        if not original_grasps:
+            print(f"No grasps defined for {category}")
+            sparse_grasps[category] = []
+            continue
+
+        print(it, len(remaining_categories), category)
+
+        grasp_list_str = "\n".join(
+            [f"- {g['grasp_definition']}" for g in original_grasps]
+        )
+
+        query = (
+            f"Given the grips of a {category} defined by:\n\n"
+            f"{grasp_list_str}\n\n"
+            "Are they all significantly different among them? If some grasp seems not generally applicable"
+            " to an object of the given category as it perhaps assumes the presence of an optional feature in the"
+            " object, we should discard that type of grasp. Assuming that the objects from each category are lying"
+            " on a table or other surface, avoid grasps that assume that the object needs to be approached from"
+            " underneath or placed upright while holding it from underneath."
+            " Feel free to briefly discuss and reason, and then"
+            " list the up to three generally applicable grasps that have least resemblance among them"
+            " as a JSON parsable list of strings."
+        )
+
+        ans = llm(query, log="sparser_grasps")
+
+        sparse_set = llm.extract_json(ans)
+        if sparse_set is None:
+            continue
+
+        sparse_grasps[category] = sparse_set
+
+        with open(output_file, "w") as f:
+            json.dump(sparse_grasps, f, indent=2)
+
+    with open(output_file, "w") as f:
+        json.dump(sparse_grasps, f, indent=2)
+
+    llm.print_costs()
+
+    return sparse_grasps
+
+
+def filter_with_semantic_task_coverage(
+    all_grasps, sparse_grasps, output_file, reprocess_empty=False
+):
+    output_file = os.path.expanduser(output_file)
+
+    if os.path.isfile(output_file):
+        with open(output_file) as f:
+            coverage_results = json.load(f)
+            if reprocess_empty:
+                for key in list(coverage_results.keys()):
+                    if len(coverage_results[key]) == 0:
+                        coverage_results.pop(key)
+    else:
+        coverage_results = {}
+
+    remaining_categories = sorted(
+        list(set(sparse_grasps.keys()) - set(coverage_results.keys()))
+    )
+
+    if len(remaining_categories) == 0:
+        return coverage_results
+
+    llm = LangchainWrapper(
+        ChatOpenAI(
+            model=MODEL_NAME,
+            max_tokens=4096,
+        )
+    )
+
+    for it, category in enumerate(remaining_categories):
+        print(it, len(remaining_categories), category)
+
+        if not all_grasps[category]:
+            coverage_results[category] = {}
+            print(f"No grasps for {category}")
+            continue
+
+        sparse_set = sparse_grasps.get(category, [])
+        all_grasps_in_cat = all_grasps.get(category, [])
+
+        if len(sparse_set) < 2:
+            coverage_results[category] = {}
+            print(f"Only {len(sparse_set)} grasps for {category}")
+            continue
+
+        semantic_tasks = []
+        full_set = []
+        for g in all_grasps_in_cat:
+            full_set.append(g["grasp_definition"])
+            semantic_tasks.extend(g.get("semantic_tasks", []))
+
+        semantic_tasks_text = "\n".join(f" - {t}" for t in semantic_tasks)
+
+        index_to_grasp = {it: grasp for it, grasp in enumerate(sparse_set)}
+        # index_to_grasp = {it: grasp for it, grasp in enumerate(full_set)}
+        grasp_str = "\n".join(
+            f" {it} {index_to_grasp[it]}" for it in range(len(index_to_grasp))
+        )
+
+        query = (
+            f"For an object of category '{category}' with the following possible grasps:\n\n"
+            f"{grasp_str}\n\n"
+            "that are identified by their numerical indices,"
+            f" which of the following semantic tasks seem solvable by each grasp?\n\n"
+            f"{semantic_tasks_text}\n\n"
+            "Discard semantic tasks that assume the presence of features not generally found in objects of this"
+            " category. You may briefly discuss any ambiguities or decisions, and finally add a JSON parsable"
+            " dict from each kept semantic task to the corresponding list of valid grasp indices."
+        )
+
+        ans = llm(query, log="semantic_task_coverage")
+        coverage_dict = llm.extract_json(ans)
+
+        if coverage_dict is None:
+            continue
+
+        current_valid_grasps = {}
+
+        num_valid_tasks = 0
+        num_valid_in_discarded_grasps = 0
+
+        for semantic_task, valid_grasps in coverage_dict.items():
+            if len(valid_grasps) > 1:
+                continue
+
+            grasp = index_to_grasp[valid_grasps[0]]
+            if grasp not in sparse_set:
+                num_valid_in_discarded_grasps += 1
+
+            num_valid_tasks += 1
+
+            if grasp in current_valid_grasps:
+                current_valid_grasps[grasp].append(semantic_task)
+            else:
+                current_valid_grasps[grasp] = [semantic_task]
+
+        coverage_results[category] = current_valid_grasps
+
+        print(
+            category,
+            num_valid_tasks,
+            "accepted",
+            num_valid_in_discarded_grasps,
+            "in discarded grasps",
+        )
+
+        with open(output_file, "w") as f:
+            json.dump(coverage_results, f, indent=2)
+
+    with open(output_file, "w") as f:
+        json.dump(coverage_results, f, indent=2)
+
+    llm.print_costs()
+    return coverage_results
+
+
 if __name__ == "__main__":
+
     def main(output_file="~/Desktop/semantic_grasps.json"):
         all_grasps = get_missing_object_types(output_file)
+        sparse_grasps = get_sparser_grasps(
+            all_grasps, output_file="~/Desktop/sparse_grasps.json"
+        )
+        coverage = filter_with_semantic_task_coverage(
+            all_grasps,
+            sparse_grasps,
+            output_file="~/Desktop/semantic_task_coverage.json",
+            reprocess_empty=False,
+        )
 
     main()
     print("DONE")

@@ -1,5 +1,6 @@
 import warnings
 from collections import defaultdict
+import json
 
 from langchain_core.load import dumps, loads
 from langchain_openai import ChatOpenAI
@@ -7,62 +8,43 @@ from langchain_openai import ChatOpenAI
 
 MODEL_CONSTANTS = {
     "gpt-4o": dict(
-        # https://platform.openai.com/settings/organization/limits
-        # https://platform.openai.com/docs/pricing
         # https://platform.openai.com/docs/models/gpt-4o
         COST_PER_INPUT_1K_TOKENS=2.50 / 1_000,
         COST_PER_OUTPUT_1K_TOKENS=10.0 / 1_000,
         COST_PER_INPUT_TOKEN=2.50 / 1_000_000,
         COST_PER_OUTPUT_TOKEN=10.0 / 1_000_000,
-        # # Tier 5 account
-        # ACCOUNT_TOKEN_LIMITS_TPM=150_000_000,
-        # ACCOUNT_REQUEST_LIMITS_RPM=50_000,
-        # ACCOUNT_BATCH_QUEUE_LIMITS_TPD=50_000_000_000,
-        # MODEL_TOKEN_LIMITS_TPM=30_000_000,
-        # MODEL_REQUEST_LIMITS_RPM=10_000,
-        # MODEL_BATCH_QUEUE_LIMITS_TPD=5_000_000_000,
     ),
     "gpt-4o-mini": dict(
-        # https://platform.openai.com/settings/organization/limits
-        # https://platform.openai.com/docs/pricing
-        # https://platform.openai.com/docs/models/gpt-4o
+        # https://platform.openai.com/docs/models/gpt-4o-mini
         COST_PER_INPUT_1K_TOKENS=0.15 / 1_000,
         COST_PER_OUTPUT_1K_TOKENS=0.60 / 1_000,
         COST_PER_INPUT_TOKEN=0.15 / 1_000_000,
         COST_PER_OUTPUT_TOKEN=0.60 / 1_000_000,
-        # # Tier 5 account
-        # ACCOUNT_TOKEN_LIMITS_TPM=150_000_000,
-        # ACCOUNT_REQUEST_LIMITS_RPM=50_000,
-        # ACCOUNT_BATCH_QUEUE_LIMITS_TPD=50_000_000_000,
-        # MODEL_TOKEN_LIMITS_TPM=30_000_000,
-        # MODEL_REQUEST_LIMITS_RPM=10_000,
-        # MODEL_BATCH_QUEUE_LIMITS_TPD=5_000_000_000,
     ),
     "gpt-4.1": dict(
-        # https://platform.openai.com/settings/organization/limits
-        # https://platform.openai.com/docs/pricing
-        # https://platform.openai.com/docs/models/gpt-4o
+        # https://platform.openai.com/docs/models/gpt-4.1
         COST_PER_INPUT_1K_TOKENS=2.0 / 1_000,
         COST_PER_OUTPUT_1K_TOKENS=8.0 / 1_000,
         COST_PER_INPUT_TOKEN=2.0 / 1_000_000,
         COST_PER_OUTPUT_TOKEN=8.0 / 1_000_000,
-        # # Tier 5 account
-        # ACCOUNT_TOKEN_LIMITS_TPM=150_000_000,
-        # ACCOUNT_REQUEST_LIMITS_RPM=50_000,
-        # ACCOUNT_BATCH_QUEUE_LIMITS_TPD=50_000_000_000,
-        # MODEL_TOKEN_LIMITS_TPM=30_000_000,
-        # MODEL_REQUEST_LIMITS_RPM=10_000,
-        # MODEL_BATCH_QUEUE_LIMITS_TPD=5_000_000_000,
+    ),
+    "gpt-4.1-mini": dict(
+        # https://platform.openai.com/docs/models/gpt-4.1-mini
+        COST_PER_INPUT_1K_TOKENS=0.40 / 1_000,
+        COST_PER_OUTPUT_1K_TOKENS=1.60 / 1_000,
+        COST_PER_INPUT_TOKEN=0.40 / 1_000_000,
+        COST_PER_OUTPUT_TOKEN=1.60 / 1_000_000,
     ),
 }
 MODEL_CONSTANTS["gpt-4o-2024-05-13"] = MODEL_CONSTANTS["gpt-4o"]
 
 
 class LangchainWrapper:
-    def __init__(self, llm):
+    def __init__(self, llm: ChatOpenAI, max_decode_attempts: int = 2):
         self.llm = llm
         self.costs_list = []
         self.serialized = None
+        self.max_decode_attempts = max(max_decode_attempts, 1)
 
     def __call__(self, input, config=None, *, stop=None, log=None, **kwargs):
         if self.llm is None and self.serialized is not None:
@@ -81,6 +63,24 @@ class LangchainWrapper:
         self.costs_list.append((log, interaction_cost))
         # print(log, interaction_cost)
         return res.content
+
+    def extract_json(self, ans, max_decode_attempts=None):
+        num_attempts = 0
+        while num_attempts < (max_decode_attempts or self.max_decode_attempts):
+            try:
+                if "```json" in ans:
+                    return json.loads(ans.split("```json")[1].split("```")[0].strip())
+                if "```" in ans:
+                    return json.loads(ans.split("```")[1].strip())
+                return json.loads(ans)
+            except json.JSONDecodeError:
+                ans = self(
+                    f"Please clean up the json structure in:\n\n{ans}",
+                    log="cleanup json",
+                )
+                num_attempts += 1
+
+        return None
 
     def add_costs(self, log, costs):
         self.costs_list.extend(costs)
