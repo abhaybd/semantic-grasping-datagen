@@ -219,24 +219,31 @@ def in_frustum_annotations(datagen_cfg: DatagenConfig, cam_K: np.ndarray, cam_po
 
     return close_mask & in_front_mask & in_bounds_mask
 
-def visible_annotations(scene: ss.Scene, cam_pose: np.ndarray, grasps: np.ndarray):
+def visible_annotations(scene: ss.Scene, cam_pose: np.ndarray, grasps: np.ndarray, grasp_points: np.ndarray):
     """
     Check if grasps are visible from the camera, i.e. the grasp is not occluded by an object in the scene.
     Args:
         scene: ss.Scene
         cam_pose: (4, 4) camera pose
         grasps: (N, 4, 4) grasps in scene frame
+        grasp_points: (N, 3) grasp points in scene frame
     Returns:
         mask: (N,) mask of the same length as grasps, where each element is True if the grasp is visible.
     """
     scene_mesh: trimesh.Trimesh = scene.scene.to_mesh()
 
-    grasp_points = homogenize(GRASP_LOCAL_POINTS)[None] @ grasps[:, :-1].transpose(0, 2, 1)
-    grasp_points = grasp_points.reshape(-1, 3)  # (N*5, 3)
-    visible_points_mask = get_visible_points(scene_mesh, cam_pose, grasp_points)
-    visible = np.sum(visible_points_mask.reshape(len(grasps), len(GRASP_LOCAL_POINTS)), axis=1) >= 3
+    gripper_points = homogenize(GRASP_LOCAL_POINTS)[None] @ grasps[:, :-1].transpose(0, 2, 1)
+    gripper_points = gripper_points.reshape(-1, 3)  # (N*5, 3)
 
-    return visible
+    raycast_points = np.concatenate([gripper_points, grasp_points], axis=0)  # (N*5+N, 3)
+    visible_mask = get_visible_points(scene_mesh, cam_pose, raycast_points)
+
+    gripper_points_visible = visible_mask[:len(gripper_points)]  # (N*5,)
+    grasp_points_visible = visible_mask[len(gripper_points):]  # (N,)
+
+    grasps_visible = np.sum(gripper_points_visible.reshape(len(grasps), len(GRASP_LOCAL_POINTS)), axis=1) >= 3
+
+    return grasps_visible & grasp_points_visible
 
 def noncolliding_annotations(scene: ss.Scene, annots: list[Annotation], grasps: np.ndarray, collision_cache: dict[tuple[str, str, int], bool]):
     """
@@ -381,7 +388,7 @@ def sample_arrangement(
             grasp_point_local += centroid
             obj_trf = scene.get_transform(obj_name)
             grasp = obj_trf @ grasp_local  # transform to scene frame
-            grasp_point = obj_trf @ homogenize(grasp_point_local)  # transform to scene frame
+            grasp_point = obj_trf[:-1] @ homogenize(grasp_point_local)  # transform to scene frame
             annotation_grasps.append(grasp)
             annotation_points.append(grasp_point)
 
@@ -453,7 +460,7 @@ def get_annotations_in_view(
     for mask_fn in [
         lambda grasps: in_frustum_annotations(datagen_cfg, cam_K, cam_pose, grasps),
         lambda grasps: noncolliding_annotations(scene, in_scene_annotations, grasps, collision_cache),
-        lambda grasps: visible_annotations(scene, cam_pose, grasps)
+        lambda grasps: visible_annotations(scene, cam_pose, grasps, in_view_grasp_points)
     ]:
         mask = mask_fn(in_view_grasps)
         in_view_annots = list(compress(in_view_annots, mask))
