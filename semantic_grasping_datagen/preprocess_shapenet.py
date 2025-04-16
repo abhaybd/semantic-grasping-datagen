@@ -9,9 +9,9 @@ import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import h5py
-from tqdm import tqdm
 
-from subsample_grasps import sample_grasps, load_aligned_meshes_and_grasps, load_unaligned_mesh_and_grasps
+from semantic_grasping_datagen.subsample_grasps import sample_grasps, load_aligned_meshes_and_grasps, load_unaligned_mesh_and_grasps
+from semantic_grasping_datagen.utils import tqdm
 
 GRASP_START_OFFSET = 0.066
 GRASP_END_OFFSET = 0.112
