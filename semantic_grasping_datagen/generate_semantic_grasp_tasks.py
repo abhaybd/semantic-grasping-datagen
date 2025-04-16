@@ -466,7 +466,7 @@ category_to_tasks = {
 }
 
 
-def get_missing_object_types(output_file, batch_size=5):
+def get_missing_object_types(output_file, batch_size=5, implicit=True):
     unused_categories = set(all_categories)  # - set(category_to_tasks.keys())
 
     output_file = os.path.expanduser(output_file)
@@ -489,6 +489,14 @@ def get_missing_object_types(output_file, batch_size=5):
         )
     )
 
+    if implicit:
+        implicit_str = (
+            " without explicitly providing instructions about the grasp description"
+            " (like point to contact or direction to approach)"
+        )
+    else:
+        implicit_str = ""
+
     for first_category in range(0, len(missing_categories), batch_size):
         cur_categories = missing_categories[
             first_category : first_category + batch_size
@@ -506,9 +514,9 @@ def get_missing_object_types(output_file, batch_size=5):
             " unidentified piece of fruit), feel free to return an empty list."
             " Then, for each of the identified grasps, generate 4 semantic grasping tasks that require that"
             " type of grasp (and not any other from the list) to correctly hold the object towards task"
-            " completion. The task definition might require a second gripper for completion, but the grasp"
-            " should be possible with a single gripper. Generate the output as a JSON map from object type to"
-            " a list of dicts, each with a"
+            f" completion{implicit_str}. The task definition might require a second gripper for completion,"
+            " but the grasp should be possible with a single gripper. Generate the output as a JSON map"
+            " from object type to a list of dicts, each with a"
             " `grasp_definition` (natural language str) and a `semantic_tasks` short list of 4 task descriptions"
             " (each a natural language str). Do not add any additional comments. The list of object types"
             f" is\n\n{cur_categories}"
@@ -598,18 +606,12 @@ def get_sparser_grasps(all_grasps, output_file):
     return sparse_grasps
 
 
-def filter_with_semantic_task_coverage(
-    all_grasps, sparse_grasps, output_file, reprocess_empty=False
-):
+def filter_with_semantic_task_coverage(all_grasps, sparse_grasps, output_file):
     output_file = os.path.expanduser(output_file)
 
     if os.path.isfile(output_file):
         with open(output_file) as f:
             coverage_results = json.load(f)
-            if reprocess_empty:
-                for key in list(coverage_results.keys()):
-                    if len(coverage_results[key]) == 0:
-                        coverage_results.pop(key)
     else:
         coverage_results = {}
 
@@ -716,16 +718,22 @@ def filter_with_semantic_task_coverage(
 
 if __name__ == "__main__":
 
-    def main(output_file="~/Desktop/semantic_grasps.json"):
-        all_grasps = get_missing_object_types(output_file)
+    def main():
+        implicit = True
+
+        implicit_str = "_implicit" if implicit else ""
+
+        all_grasps = get_missing_object_types(
+            f"~/Desktop/semantic_grasps{implicit_str}.json", implicit=implicit
+        )
+
         sparse_grasps = get_sparser_grasps(
-            all_grasps, output_file="~/Desktop/sparse_grasps.json"
+            all_grasps, output_file=f"~/Desktop/sparse_grasps{implicit_str}.json"
         )
         coverage = filter_with_semantic_task_coverage(
             all_grasps,
             sparse_grasps,
-            output_file="~/Desktop/semantic_task_coverage.json",
-            reprocess_empty=False,
+            output_file=f"~/Desktop/semantic_task_after_coverage{implicit_str}.json",
         )
 
     main()
