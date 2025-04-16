@@ -577,13 +577,13 @@ def get_sparser_grasps(all_grasps, output_file):
         query = (
             f"Given the grips of a {category} defined by:\n\n"
             f"{grasp_list_str}\n\n"
-            "Are they all significantly different among them? If some grasp seems not generally applicable"
+            "If some grasp seems not generally applicable"
             " to an object of the given category as it perhaps assumes the presence of an optional feature in the"
             " object, we should discard that type of grasp. Assuming that the objects from each category are lying"
-            " on a table or other surface, avoid grasps that assume that the object needs to be approached from"
-            " underneath or placed upright while holding it from underneath."
-            " Feel free to briefly discuss and reason, and then"
-            " list the up to three generally applicable grasps that have least resemblance among them"
+            " on a table or other surface, we should also discard grasps that assume that the object needs to be"
+            " approached from underneath or placed upright while holding it from underneath."
+            " Feel free to briefly discuss before your decision, and then"
+            " list the up to two (2) generally applicable grasps that have least resemblance among them"
             " as a JSON parsable list of strings."
         )
 
