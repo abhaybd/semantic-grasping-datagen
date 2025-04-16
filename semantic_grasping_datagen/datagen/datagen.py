@@ -1,4 +1,3 @@
-import argparse
 from concurrent.futures import ProcessPoolExecutor, Future, as_completed
 import json
 import os
@@ -165,7 +164,41 @@ def generate_lighting(scene: ss.Scene, datagen_cfg: DatagenConfig) -> list[dict]
     ]
     return lights
 
-def on_screen_annotations(datagen_cfg: DatagenConfig, cam_K: np.ndarray, cam_pose: np.ndarray, grasps: np.ndarray):
+def get_visible_points(scene_mesh: trimesh.Trimesh, cam_pose: np.ndarray, points: np.ndarray, eps: float=1e-5):
+    """
+    Check if points are visible from the camera. "Visible" means that a ray from the camera to the point
+    does not intersect the scene mesh before hitting the point. The point may or may not be on the scene mesh.
+    Args:
+        scene_mesh: trimesh.Trimesh - scene mesh
+        cam_pose: (4, 4) camera pose
+        points: (N, 3) points in scene frame
+    Returns:
+        mask: (N,) mask of the same length as points, where each element is True if the point is visible.
+    """
+    ray_origins = np.tile(cam_pose[:3, 3], (len(points), 1))
+    ray_directions = points - ray_origins
+    ray_directions /= np.linalg.norm(ray_directions, axis=1, keepdims=True)
+
+    visible = np.zeros(len(points), dtype=bool)
+
+    intersect_points, ray_idxs, _ = scene_mesh.ray.intersects_location(ray_origins, ray_directions, multiple_hits=False)
+    hit_dists = np.linalg.norm(intersect_points - ray_origins[ray_idxs], axis=1)
+    point_dists = np.linalg.norm(points[ray_idxs] - ray_origins[ray_idxs], axis=1)
+    visible[ray_idxs] = ~(hit_dists < point_dists - eps)
+
+    return visible
+
+def in_frustum_annotations(datagen_cfg: DatagenConfig, cam_K: np.ndarray, cam_pose: np.ndarray, grasps: np.ndarray):
+    """
+    Check if grasps are within the camera frustum.
+    Args:
+        datagen_cfg: DatagenConfig
+        cam_K: (3, 3) camera intrinsic matrix
+        cam_pose: (4, 4) camera pose
+        grasps: (N, 4, 4) grasps in scene frame
+    Returns:
+        mask: (N,) mask of the same length as grasps, where each element is True if the grasp is within the camera frustum.
+    """
     # grasps is (N, 4, 4) poses in scene frame
     trf = np.eye(4)
     trf[[1,2], [1,2]] = -1  # flip y and z axes, since for trimesh camera -z is forward
@@ -187,29 +220,29 @@ def on_screen_annotations(datagen_cfg: DatagenConfig, cam_K: np.ndarray, cam_pos
     return close_mask & in_front_mask & in_bounds_mask
 
 def visible_annotations(scene: ss.Scene, cam_pose: np.ndarray, grasps: np.ndarray):
-    # grasps is (N, 4, 4) poses in scene frame
+    """
+    Check if grasps are visible from the camera, i.e. the grasp is not occluded by an object in the scene.
+    Args:
+        scene: ss.Scene
+        cam_pose: (4, 4) camera pose
+        grasps: (N, 4, 4) grasps in scene frame
+    Returns:
+        mask: (N,) mask of the same length as grasps, where each element is True if the grasp is visible.
+    """
+    scene_mesh: trimesh.Trimesh = scene.scene.to_mesh()
+
     grasp_points = homogenize(GRASP_LOCAL_POINTS)[None] @ grasps[:, :-1].transpose(0, 2, 1)
     grasp_points = grasp_points.reshape(-1, 3)  # (N*5, 3)
-    
-    ray_origins = np.tile(cam_pose[:3, 3], (len(grasp_points), 1))
-    ray_directions = grasp_points - ray_origins
-    ray_directions /= np.linalg.norm(ray_directions, axis=1, keepdims=True)
+    visible_points_mask = get_visible_points(scene_mesh, cam_pose, grasp_points)
+    visible = np.sum(visible_points_mask.reshape(len(grasps), len(GRASP_LOCAL_POINTS)), axis=1) >= 3
 
-    scene_mesh: trimesh.Trimesh = scene.scene.to_mesh()
-    intersect_points, ray_idxs, _ = scene_mesh.ray.intersects_location(ray_origins, ray_directions)
-    ray_hit_grasp = np.ones(len(grasp_points), dtype=bool)
-    for i in range(len(ray_hit_grasp)):
-        mask = ray_idxs == i
-        if np.any(mask):
-            points = intersect_points[mask]
-            closest_hit_dist = np.min(np.linalg.norm(points - ray_origins[i], axis=1))
-            grasp_point_dist = np.linalg.norm(grasp_points[i] - ray_origins[i])
-            if closest_hit_dist < grasp_point_dist:
-                ray_hit_grasp[i] = False
-    visible = np.sum(ray_hit_grasp.reshape(len(grasps), len(GRASP_LOCAL_POINTS)), axis=1) >= 3
     return visible
 
 def noncolliding_annotations(scene: ss.Scene, annots: list[Annotation], grasps: np.ndarray, collision_cache: dict[tuple[str, str, int], bool]):
+    """
+    Check if grasps are noncolliding, i.e. the grasp is not in collision with any other object in the scene.
+    Returns a mask of the same length as grasps, where each element is True if the grasp is noncolliding.
+    """
     # grasps is (N, 4, 4) poses in scene frame
     gripper_manager = trimesh.collision.CollisionManager()
     noncolliding = np.ones(len(grasps), dtype=bool)
@@ -250,6 +283,7 @@ def sample_camera_pose(
     cam_dfov: float,
     in_scene_annotations: list[Annotation],
     annotation_grasps: np.ndarray,
+    annotation_points: np.ndarray,
     collision_cache: dict[tuple[str, str, int], bool]
 ):
     img_h, img_w = datagen_cfg.img_size
@@ -276,11 +310,20 @@ def sample_camera_pose(
             datagen_cfg.cam_yaw_perturb * np.radians(cam_xfov)
         )
 
-    in_view_annots, in_view_grasps = get_annotations_in_view(scene, datagen_cfg, cam_K, cam_pose, in_scene_annotations, annotation_grasps, collision_cache)
+    in_view_annots, in_view_grasps, in_view_grasp_points = get_annotations_in_view(
+        scene,
+        datagen_cfg,
+        cam_K,
+        cam_pose,
+        in_scene_annotations,
+        annotation_grasps,
+        annotation_points,
+        collision_cache
+    )
     if len(in_view_annots) < datagen_cfg.min_annots_per_view:
         return None
 
-    return cam_K, cam_pose, in_view_annots, in_view_grasps
+    return cam_K, cam_pose, in_view_annots, in_view_grasps, in_view_grasp_points
 
 
 def sample_arrangement(
@@ -312,47 +355,56 @@ def sample_arrangement(
         scene.place_object(f"background_{i}", asset, "support")
 
     grasps_dict: dict[tuple[str, str], np.ndarray] = {}  # maps object in scene to its grasps in centroid frame
+    grasp_points_dict: dict[tuple[str, str], np.ndarray] = {}  # maps object in scene to its grasp points in centroid frame
     for name in scene.get_object_names():
         assert isinstance(name, str)
         if not name.startswith("object_"):
             continue
         _, cat, obj_id = name.split("_", 2)
         grasps_dict[(cat, obj_id)] = object_library.grasps(cat, obj_id)[0]
+        grasp_points_dict[(cat, obj_id)] = object_library.grasp_points(cat, obj_id)
 
     in_scene_annotations: list[Annotation] = []
     annotation_grasps = []  # grasps in scene frame
+    annotation_points = []  # points in scene frame
     for annot in annotations:
         if (annot.obj.object_category, annot.obj.object_id) in grasps_dict:
             obj_name = f"object_{annot.obj.object_category}_{annot.obj.object_id}"
             in_scene_annotations.append(annot)
             grasp_local = grasps_dict[(annot.obj.object_category, annot.obj.object_id)][annot.grasp_id].copy()
+            grasp_point_local = grasp_points_dict[(annot.obj.object_category, annot.obj.object_id)][annot.grasp_id].copy()
             geom_names = scene.get_geometry_names(obj_name)
             assert len(geom_names) == 1
             # the grasp is in the centroid frame of the object, so offset by centroid in local frame
-            grasp_local[:3, 3] += scene.get_centroid(geom_names[0], obj_name)
+            centroid = scene.get_centroid(geom_names[0], obj_name)
+            grasp_local[:3, 3] += centroid
+            grasp_point_local += centroid
             obj_trf = scene.get_transform(obj_name)
             grasp = obj_trf @ grasp_local  # transform to scene frame
+            grasp_point = obj_trf @ homogenize(grasp_point_local)  # transform to scene frame
             annotation_grasps.append(grasp)
+            annotation_points.append(grasp_point)
 
     annotation_grasps = np.array(annotation_grasps)
+    annotation_points = np.array(annotation_points)
     collision_cache: dict[tuple[str, str, int], bool] = {}  # (category, obj_id, grasp_id) -> is colliding
 
     views: list[tuple[np.ndarray, np.ndarray]] = []
-    annots_in_scene: dict[str, tuple[Annotation, np.ndarray]] = {}  # annotation_id -> (annotation, grasp)
+    annots_in_scene: dict[str, tuple[Annotation, np.ndarray, np.ndarray]] = {}  # annotation_id -> (annotation, grasp, grasp_point)
     annots_per_view: list[list[str]] = []
     try:
         for i in range(datagen_cfg.n_views):
             cam_dfov = np.random.uniform(*datagen_cfg.cam_dfov_range)
-            cam_K, cam_pose, in_view_annots, in_view_grasps = rejection_sample(
-                lambda: sample_camera_pose(scene, datagen_cfg, cam_dfov, in_scene_annotations, annotation_grasps, collision_cache),
+            cam_K, cam_pose, in_view_annots, in_view_grasps, in_view_grasp_points = rejection_sample(
+                lambda: sample_camera_pose(scene, datagen_cfg, cam_dfov, in_scene_annotations, annotation_grasps, annotation_points, collision_cache),
                 not_none,
                 100
             )
             views.append([cam_K, cam_pose])
             annots_per_view.append([])
-            for annot, grasp in zip(in_view_annots, in_view_grasps):
+            for annot, grasp, grasp_point in zip(in_view_annots, in_view_grasps, in_view_grasp_points):
                 annot_id = f"{annot.obj.object_category}_{annot.obj.object_id}_{annot.grasp_id}"
-                annots_in_scene[annot_id] = (annot, grasp)
+                annots_in_scene[annot_id] = (annot, grasp, grasp_point)
                 annots_per_view[-1].append(annot_id)
     except RejectionSampleError:
         return None
@@ -386,27 +438,31 @@ def get_annotations_in_view(
     cam_pose: np.ndarray,
     in_scene_annotations: list[Annotation],
     annotation_grasps: np.ndarray,
+    annotation_points: np.ndarray,
     collision_cache: dict[tuple[str, str, int], bool]
 ):
     """
     Returns:
-        in_view_annots: list[Annotation] - annotations in view
-        in_view_grasps: np.ndarray - grasps in scene frame
+        in_view_annots: list[Annotation] - N annotations in view
+        in_view_grasps: np.ndarray - (N, 4, 4) grasps in scene frame
+        in_view_grasp_points: np.ndarray - (N, 3) grasp points in scene frame
     """
     in_view_annots = in_scene_annotations
     in_view_grasps = annotation_grasps
+    in_view_grasp_points = annotation_points
     for mask_fn in [
-        lambda grasps: on_screen_annotations(datagen_cfg, cam_K, cam_pose, grasps),
+        lambda grasps: in_frustum_annotations(datagen_cfg, cam_K, cam_pose, grasps),
         lambda grasps: noncolliding_annotations(scene, in_scene_annotations, grasps, collision_cache),
         lambda grasps: visible_annotations(scene, cam_pose, grasps)
     ]:
         mask = mask_fn(in_view_grasps)
         in_view_annots = list(compress(in_view_annots, mask))
         in_view_grasps = in_view_grasps[mask]
+        in_view_grasp_points = in_view_grasp_points[mask]
         if not np.any(mask):
             break
-    
-    return in_view_annots, in_view_grasps
+
+    return in_view_annots, in_view_grasps, in_view_grasp_points
 
 def generate_scene(datagen_cfg: DatagenConfig, annotations: list[Annotation], object_library: MeshLibrary, background_library: MeshLibrary, support_library: MeshLibrary):
     scene, views, annots_in_scene, annots_per_view = rejection_sample(

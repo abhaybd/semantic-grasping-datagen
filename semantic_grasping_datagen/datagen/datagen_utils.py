@@ -160,3 +160,7 @@ class MeshLibrary(object):
         mesh = self._load_mesh(category, obj_id, center=False)
         T[:, :3, 3] -= mesh.centroid
         return T, success
+
+    def grasp_points(self, category: str, obj_id: str):
+        with h5py.File(f"{self.data_dir}/grasps/{category}_{obj_id}.h5", "r") as data:
+            return data["grasps/points"][()]

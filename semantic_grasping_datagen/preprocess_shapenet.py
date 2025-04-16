@@ -4,14 +4,17 @@ import os
 import shutil
 import re
 import pickle
+import trimesh
+import numpy as np
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import h5py
 from tqdm import tqdm
 
 from subsample_grasps import sample_grasps, load_aligned_meshes_and_grasps, load_unaligned_mesh_and_grasps
 
-GRIPPER_POS_OFFSET = 0.075
-
+GRASP_START_OFFSET = 0.066
+GRASP_END_OFFSET = 0.112
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -22,7 +25,7 @@ def get_args():
     parser.add_argument("--n-proc", type=int, default=16, help="Number of processes to use")
     parser.add_argument("--n-grasps", type=int, default=4, help="Minimum number of grasps per object instance in a category")
     parser.add_argument("--min-grasps", type=int, default=32, help="Minimum number of grasps per category")
-    parser.add_argument("--only-sample-grasps", action="store_true", help="Only sample grasps, do not copy meshes")
+    parser.add_argument("--step", choices=["copy", "project", "subsample"])
     parser.add_argument("--sampling-categories-file", help="File containing categories to resample grasps for")
     return parser.parse_args()
 
@@ -85,6 +88,44 @@ def copy_assets(args):
             )
 
 
+def project_grasps_for_asset(args, grasp_filename: str):
+    output_grasp_dir = os.path.join(args.output_dir, "grasps")
+    mesh, grasps, succs = load_unaligned_mesh_and_grasps(args.output_dir, os.path.join(output_grasp_dir, grasp_filename))
+    mesh: trimesh.Trimesh
+    grasp_points = np.full((len(grasps), 3), np.nan)
+
+    succ_idxs = np.flatnonzero(succs)
+    succ_grasps = grasps[succ_idxs]
+    raycast_pos = succ_grasps[:, :3, 3] + succ_grasps[:, :3, 2] * GRASP_START_OFFSET
+    raycast_dir = succ_grasps[:, :3, 2]
+
+    points, ray_idxs, _ = mesh.ray.intersects_location(raycast_pos, raycast_dir, multiple_hits=False)
+    dists = np.linalg.norm(points - raycast_pos[ray_idxs], axis=1)
+    in_bounds_mask = dists < (GRASP_END_OFFSET - GRASP_START_OFFSET)
+    grasp_points[succ_idxs[ray_idxs[in_bounds_mask]]] = points[in_bounds_mask]
+
+    # if the raycast misses, or lands on a point out of the grasp, fall back to the closest point on the mesh
+    fallback_grasps_mask = np.ones(len(succ_grasps), dtype=bool)
+    fallback_grasps_mask[ray_idxs] = False
+    fallback_grasps_mask[ray_idxs[~in_bounds_mask]] = True
+    if np.any(fallback_grasps_mask):
+        fallback_points, _, _ = trimesh.proximity.closest_point(mesh, raycast_pos[fallback_grasps_mask])
+        grasp_points[succ_idxs[fallback_grasps_mask]] = fallback_points
+
+    with h5py.File(os.path.join(output_grasp_dir, grasp_filename), "r+") as f:
+        if "grasps/points" in f:
+            del f["grasps/points"]
+        f["grasps/points"] = grasp_points
+
+
+def project_grasps(args):
+    output_grasp_dir = os.path.join(args.output_dir, "grasps")
+    with ProcessPoolExecutor(args.n_proc) as executor:
+        futures = [executor.submit(project_grasps_for_asset, args, grasp_filename) for grasp_filename in os.listdir(output_grasp_dir)]
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Projecting grasps"):
+            future.result()
+
+
 def subsample_grasps(args):
     # maps (category, object_id, grasp_id) -> whether the grasp is annotated
     annotation_skeleton: dict[str, dict[str, dict[int, bool]]] = {}
@@ -139,10 +180,14 @@ def subsample_grasps(args):
 
 def main():
     args = get_args()
+    has_step = args.step is not None
 
-    if not args.only_sample_grasps:
+    if not has_step or args.step == "copy":
         copy_assets(args)
-    subsample_grasps(args)
+    if not has_step or args.step == "project":
+        project_grasps(args)
+    if not has_step or args.step == "subsample":
+        subsample_grasps(args)
 
 if __name__ == "__main__":
     main()
