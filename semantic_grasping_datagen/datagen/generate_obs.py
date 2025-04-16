@@ -110,7 +110,8 @@ def render(out_dir: str, scene_dir: str):
 
     with open(f"{scene_dir}/scene.pkl", "rb") as f:
         scene_data = pickle.load(f)
-    all_annotations: dict[str, tuple[Annotation, np.ndarray]] = scene_data["annotations"]
+    # maps annot_id to (annotation, grasp_pose, grasp_point)
+    all_annotations: dict[str, tuple[Annotation, np.ndarray, np.ndarray]] = scene_data["annotations"]
     scene = build_scene(scene_data)
 
     renderer: pyrender.OffscreenRenderer = globals()["renderer"]
@@ -142,9 +143,12 @@ def render(out_dir: str, scene_dir: str):
         view_xyz.append(xyz)
         observations = []
         for annot_id in view["annotations_in_view"]:
-            annot, grasp_pose = all_annotations[annot_id]
+            annot, grasp_pose, grasp_point = all_annotations[annot_id]
             grasp_pose_in_cam_frame = np.linalg.solve(cam_pose_standard, grasp_pose)
-            observations.append((grasp_pose_in_cam_frame, annot, annot_id))
+            grasp_point_in_cam_frame = cam_pose_standard[:3, :3].T @ (grasp_point - cam_pose_standard[:3, 3])  # closed form for rigid inverse
+            grasp_point_px = cam_K @ grasp_point_in_cam_frame
+            grasp_point_px = grasp_point_px[:2] / grasp_point_px[2]
+            observations.append((grasp_pose_in_cam_frame, grasp_point_in_cam_frame, grasp_point_px, annot, annot_id))
         view_observations.append(observations)
 
     batched_xyz = np.stack(view_xyz, axis=0)  # (B, H, W, 3)
@@ -176,9 +180,12 @@ def render(out_dir: str, scene_dir: str):
                 view_group.create_dataset("view_pose", data=pose, compression="gzip")
                 view_group.create_dataset("cam_params", data=cam_params, compression="gzip")
 
-                for obs_idx, (grasp_pose, annot, annot_id) in enumerate(observations):
+                for obs_idx, (grasp_pose, grasp_point, grasp_point_px, annot, annot_id) in enumerate(observations):
                     obs_group = view_group.create_group(f"obs_{obs_idx}")
                     obs_group.create_dataset("grasp_pose", data=grasp_pose, compression="gzip")
+                    obs_group.create_dataset("grasp_point", data=grasp_point, compression="gzip")
+                    obs_group.create_dataset("grasp_point_px", data=grasp_point_px, compression="gzip")
+
                     annot_str = yaml.dump({
                         "annotation_id": annot_id,
                         "grasp_description": annot.grasp_description,
