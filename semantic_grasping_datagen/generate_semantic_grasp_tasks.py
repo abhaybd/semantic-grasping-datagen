@@ -584,7 +584,8 @@ def get_sparser_grasps(all_grasps, output_file):
             " approached from underneath or placed upright while holding it from underneath."
             " Feel free to briefly discuss before your decision, and then"
             " list the up to two (2) generally applicable grasps that have least resemblance among them"
-            " as a JSON parsable list of strings."
+            " as a JSON parsable list of strings. Consider resemblance a function of the part of the object to grasp"
+            " and the relative direction to approach."
         )
 
         ans = llm(query, log="sparser_grasps")
