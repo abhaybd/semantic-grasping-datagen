@@ -1,6 +1,7 @@
 import os.path
 from collections import defaultdict
 import json
+from operator import index
 
 from semantic_grasping_datagen.langchain_wrapper import LangchainWrapper, ChatOpenAI
 
@@ -666,9 +667,11 @@ def filter_with_semantic_task_coverage(all_grasps, sparse_grasps, output_file):
             "that are identified by their numerical indices,"
             f" which of the following semantic tasks seem solvable by each grasp?\n\n"
             f"{semantic_tasks_text}\n\n"
-            "Discard semantic tasks that assume the presence of features not generally found in objects of this"
+            "Discard semantic tasks that assume the presence of features only optionally found in objects of this"
             " category. You may briefly discuss any ambiguities or decisions, and finally add a JSON parsable"
             " dict from each kept semantic task to the corresponding list of valid grasp indices."
+            " If no grasp seems reasonable for a semantic task, it is fine to return an empty list for that semantic"
+            " task."
         )
 
         ans = llm(query, log="semantic_task_coverage")
@@ -683,7 +686,7 @@ def filter_with_semantic_task_coverage(all_grasps, sparse_grasps, output_file):
         num_valid_in_discarded_grasps = 0
 
         for semantic_task, valid_grasps in coverage_dict.items():
-            if len(valid_grasps) > 1:
+            if len(valid_grasps) != 1:
                 continue
 
             grasp = index_to_grasp[valid_grasps[0]]
@@ -696,6 +699,14 @@ def filter_with_semantic_task_coverage(all_grasps, sparse_grasps, output_file):
                 current_valid_grasps[grasp].append(semantic_task)
             else:
                 current_valid_grasps[grasp] = [semantic_task]
+
+        if len(current_valid_grasps) < 2:
+            # Avoid bias later by ensuring both grasp types are represented
+            print(f"Only {len(current_valid_grasps)} grasps for {category}. Consider skipping?")
+
+        for grasp in index_to_grasp.values():
+            if grasp not in current_valid_grasps:
+                current_valid_grasps[grasp] = []
 
         coverage_results[category] = current_valid_grasps
 
@@ -717,6 +728,83 @@ def filter_with_semantic_task_coverage(all_grasps, sparse_grasps, output_file):
     return coverage_results
 
 
+def refine_semantic_tasks(all_tasks, output_file):
+    output_file = os.path.expanduser(output_file)
+
+    if os.path.isfile(output_file):
+        with open(output_file) as f:
+            refined_tasks = json.load(f)
+    else:
+        refined_tasks = {}
+
+    remaining_categories = sorted(
+        list(set(all_tasks.keys()) - set(refined_tasks.keys()))
+    )
+
+    if len(remaining_categories) == 0:
+        return refined_tasks
+
+    llm = LangchainWrapper(
+        ChatOpenAI(
+            model=MODEL_NAME,
+            max_tokens=4096,
+        )
+    )
+
+    for it, category in enumerate(remaining_categories):
+        category_data = all_tasks.get(category, {})
+        if not category_data:
+            print(f"No data for {category}")
+            refined_tasks[category] = {}
+            continue
+
+        print(it, len(remaining_categories), category)
+
+        prompt = (
+            f"The following are semantic tasks associated with grasps for the object category '{category}':\n\n"
+        )
+
+        for grasp_name, tasks in category_data.items():
+            if len(tasks) == 0:
+                task_list_str += "N/A"
+            else:
+                task_list_str = "\n".join([f"  - {t}" for t in tasks])
+            prompt += f"Grasp: {grasp_name}\n{task_list_str}\n\n"
+
+        prompt += (
+            "Note that some grasps do not have any valid semantic tasks. The task definition might require a second gripper for completion,"
+            " but the grasp should be possible with a single gripper."
+            " Please process the tasks for each grasp in the following way:\n"
+            "1. Ensure that every task clearly mentions the object type (e.g., 'the mug') unless it should be obvious.\n"
+            "2. Remove or rephrase tasks that include reference to the part of the object being grasped (e.g., 'by the handle').\n"
+            "3. Ensure each grasp has at least two semantic tasks, and that the tasks are incompatible with the alternative grasps in each category"
+            "(they should imply different use-cases or affordances).\n"
+            "4. If needed, rewrite tasks in clear, natural language—avoid technical formatting like snake_case.\n\n"
+            "For each semantic task, generate a JSON dict with the entries:\n"
+            " - `text`: the semantic task text, without mentioning the grasped part or approach direction, and mentioning the target object if needed\n"
+            " - `grasp_score`: score in range 0 to 9 according to the validity of the assigned grasp (this should be high for valid tasks),\n"
+            " - `grasp_score_reason`: short string justifying the score (taking into account both grasps for the category, intelligibility of the task, etc.)\n"
+            " - `alternative_grasp_score`: score in range 0 to 9 according to the validity of the alternative grasp (this should be low for valid tasks),\n"
+            " - `alternative_grasp_score_reason`: short string justifying the score (taking into account both grasps for the category, intelligibility of the task, etc.)\n"
+            " add a JSON dictionary mapping each grasp name to a list of at least two semantic task JSON dicts. Do not add any additional reasoning."
+        )
+
+        response = llm(prompt, log="refined_semantic_tasks")
+        parsed = llm.extract_json(response)
+        if parsed is None:
+            print(f"Failed to parse LLM response for category '{category}'")
+            continue
+
+        refined_tasks[category] = parsed
+
+        with open(output_file, "w") as f:
+            json.dump(refined_tasks, f, indent=2)
+
+    llm.print_costs()
+
+    return refined_tasks
+
+
 if __name__ == "__main__":
 
     def main():
@@ -735,6 +823,10 @@ if __name__ == "__main__":
             all_grasps,
             sparse_grasps,
             output_file=f"~/Desktop/semantic_task_after_coverage{implicit_str}.json",
+        )
+        cleaned = refine_semantic_tasks(
+            coverage,
+            output_file=f"~/Desktop/semantic_task_cleaned_up{implicit_str}.json",
         )
 
     main()

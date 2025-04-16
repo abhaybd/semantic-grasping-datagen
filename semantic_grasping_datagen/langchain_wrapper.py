@@ -67,6 +67,13 @@ class LangchainWrapper:
     def extract_json(self, ans, max_decode_attempts=None):
         num_attempts = 0
         while num_attempts < (max_decode_attempts or self.max_decode_attempts):
+            if num_attempts > 0:
+                print("Cleaning up json structure via llm")
+                ans = self(
+                    f"Please clean up the json structure in:\n\n{ans}",
+                    log="cleanup json",
+                )
+
             try:
                 if "```json" in ans:
                     return json.loads(ans.split("```json")[1].split("```")[0].strip())
@@ -74,10 +81,6 @@ class LangchainWrapper:
                     return json.loads(ans.split("```")[1].strip())
                 return json.loads(ans)
             except json.JSONDecodeError:
-                ans = self(
-                    f"Please clean up the json structure in:\n\n{ans}",
-                    log="cleanup json",
-                )
                 num_attempts += 1
 
         return None
