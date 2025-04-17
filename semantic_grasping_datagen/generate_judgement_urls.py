@@ -5,10 +5,11 @@ import boto3
 import base64
 import urllib.parse
 import json
+from typing import Optional
 
 from types_boto3_s3 import S3Client
 
-from utils import list_s3_files
+from semantic_grasping_datagen.utils import list_s3_files
 
 BUCKET_NAME = "prior-datasets"
 SYNTHETIC_ANNOT_PREFIX = "semantic-grasping/annotations-synthetic/"
@@ -73,15 +74,22 @@ def annot_id_to_judged_annot_id(annot_id: str):
         parts = parts[1:]
     return "__".join(parts)
 
-def main():
-    args = get_args()
-
+def generate_urls(
+    url_base: str,
+    schedule_length: int,
+    synthetic: bool=False,
+    overwrite: bool=False,
+    prolific_code: Optional[str] = None,
+    prolific_rejection_code: Optional[str] = None,
+    prolific_study_id: Optional[str] = None,
+    limit: Optional[int] = None
+) -> list[str]:
     s3 = boto3.client("s3")
 
-    annot_prefix = SYNTHETIC_ANNOT_PREFIX if args.synthetic else HUMAN_ANNOT_PREFIX
+    annot_prefix = SYNTHETIC_ANNOT_PREFIX if synthetic else HUMAN_ANNOT_PREFIX
     annotation_ids = get_annotation_ids(s3, annot_prefix)
     print(f"Total annotations to judge: {len(annotation_ids)}")
-    if not args.overwrite:
+    if not overwrite:
         already_judged = set(judged_annotation_ids(s3))
         print(f"Already judged {len(already_judged)} annotations")
         annotation_ids = [annot_id for annot_id in annotation_ids if annot_id_to_judged_annot_id(annot_id) not in already_judged]
@@ -90,27 +98,42 @@ def main():
 
     annotations = [parse_annot_id(annot_id) for annot_id in annotation_ids]
 
-    limit = min(args.limit * args.schedule_length if args.limit else len(annotations), len(annotations))
+    limit = min(limit * schedule_length if limit else len(annotations), len(annotations))
     annotations = annotations[:limit]
 
     urls = []
-    for i in range(0, len(annotations), args.schedule_length):
-        schedule_items = annotations[i:i+args.schedule_length]
+    for i in range(0, len(annotations), schedule_length):
+        schedule_items = annotations[i:i+schedule_length]
         schedule = {
             "idx": 0,
             "judgements": schedule_items
         }
         schedule_encoded = urllib.parse.quote_plus(base64.b64encode(json.dumps(schedule).encode()).decode())
-        url = f"{args.url}?judgement_schedule={schedule_encoded}"
-        if args.prolific_code:
-            url += f"&prolific_code={args.prolific_code}"
-            if args.prolific_rejection_code:
-                url += f"&prolific_rejection_code={args.prolific_rejection_code}"
-        if args.prolific_study_id:
-            url += f"&study_id={args.prolific_study_id}"
+        url = f"{url_base}?judgement_schedule={schedule_encoded}"
+        if prolific_code:
+            url += f"&prolific_code={prolific_code}"
+            if prolific_rejection_code:
+                url += f"&prolific_rejection_code={prolific_rejection_code}"
+        if prolific_study_id:
+            url += f"&study_id={prolific_study_id}"
         url += "&judgement=true"
         urls.append(url)
-    
+    return urls
+
+def main():
+    args = get_args()
+
+    urls = generate_urls(
+        url_base=args.url,
+        schedule_length=args.schedule_length,
+        synthetic=args.synthetic,
+        overwrite=args.overwrite,
+        prolific_code=args.prolific_code,
+        prolific_rejection_code=args.prolific_rejection_code,
+        prolific_study_id=args.prolific_study_id,
+        limit=args.limit
+    )
+
     if args.output:
         with open(args.output, "w") as f:
             for url in urls:
