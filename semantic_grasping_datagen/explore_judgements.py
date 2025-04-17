@@ -1,3 +1,4 @@
+import argparse
 import io
 import os
 import json
@@ -22,40 +23,14 @@ DATA_PREFIX = "semantic-grasping/acronym/"
 PRACTICE_PREFIX = "semantic-grasping/practice-results/"
 JUDGEMENTS_PREFIX = "semantic-grasping/judgements/"
 
-def download_files(s3: S3Client, local_dir: str, prefix: str):
-    if not os.path.exists(local_dir):
-        os.makedirs(local_dir)
-
-    remote_files = list_s3_files(s3, BUCKET_NAME, prefix)
-    files_to_download = []
-    for key in remote_files:
-        local_path = os.path.join(local_dir, os.path.basename(key))
-        if not os.path.exists(local_path):
-            files_to_download.append((key, local_path))
-
-    for key, local_path in tqdm(files_to_download, desc="Downloading files", disable=len(files_to_download) == 0):
-        s3.download_file(BUCKET_NAME, key, local_path)
-
-def process_judgements(local_dir: str):
-    judgements: list[Judgement] = []
-    for filename in os.listdir(local_dir):
-        if filename.endswith(".json"):
-            with open(os.path.join(local_dir, filename), "r") as f:
-                data = Judgement.model_validate_json(f.read())
-                judgements.append(data)
-    return judgements
-
-def plot_object_distribution(annotations: list[Annotation]):
-    object_counts = {}
-    for annotation in annotations:
-        object_counts[annotation.obj.object_category] = object_counts.get(annotation.obj.object_category, 0) + 1
-    keys = sorted(object_counts.keys())
-    plt.bar(keys, [object_counts[k] for k in keys])
-    plt.xlabel("Object Category")
-    plt.ylabel("Count")
-    plt.title("Object Distribution")
-    plt.show()
-
+def get_args():
+    parser = argparse.ArgumentParser(description="Explore and visualize annotations.")
+    parser.add_argument("-v", "--visualize", nargs=3, metavar=("CATEGORY", "OBJ_ID", "GRASP_ID"), help="Visualize a specific observation.")
+    parser.add_argument("-r", "--random-viz", action="store_true", help="Visualize a random observation.")
+    parser.add_argument("-u", "--viz-uzer", help="Visualize all annotations from a specific user.")
+    parser.add_argument("--user-hist", action="store_true")
+    parser.add_argument("-p", "--practice-results", help="See practice results for a user.")
+    return parser.parse_args()
 
 def load_object_data(s3: S3Client, category: str, obj_id: str) -> tuple[trimesh.Scene, np.ndarray]:
     datafile_key = f"{DATA_PREFIX}grasps/{category}_{obj_id}.h5"
@@ -90,7 +65,7 @@ def load_object_data(s3: S3Client, category: str, obj_id: str) -> tuple[trimesh.
             raise ValueError("Unsupported geometry type")
     return scene, T
 
-def visualize_judgement(judgement: Judgement):
+def visualize_judgement(s3: S3Client, judgement: Judgement):
     print(f"Judgement from user {judgement.user_id}")
     print(f"\tObject: {judgement.annotation.obj.object_category}_{judgement.annotation.obj.object_id}")
     print(f"\tGrasp ID: {judgement.annotation.grasp_id}")
@@ -102,26 +77,6 @@ def visualize_judgement(judgement: Judgement):
 
     scene, T = load_object_data(s3, judgement.annotation.obj.object_category, judgement.annotation.obj.object_id)
     gripper_marker = create_gripper_marker(color=[0, 255, 0]).apply_transform(T[judgement.annotation.grasp_id])
-    gripper_marker.apply_translation(-scene.centroid)
-    scene.apply_translation(-scene.centroid)
-    scene.add_geometry(gripper_marker)
-    try:
-        scene.to_mesh().show()
-    except AttributeError:
-        pass
-
-def visualize_annotation(annotation: Annotation):
-    print(f"Annotation from user {annotation.user_id}")
-    print(f"\tObject: {annotation.obj.object_category}_{annotation.obj.object_id}")
-    print(f"\tGrasp ID: {annotation.grasp_id}")
-    print(f"\tLabel: {annotation.grasp_label}")
-    print(f"\tMesh Malformed: {annotation.is_mesh_malformed}")
-    print(f"\tTime taken: {annotation.time_taken:.2f} sec")
-    print(f"\tObject Description: {annotation.obj_description}")
-    print(f"\tGrasp Description: {annotation.grasp_description}")
-
-    scene, T = load_object_data(s3, annotation.obj.object_category, annotation.obj.object_id)
-    gripper_marker = create_gripper_marker(color=[0, 255, 0]).apply_transform(T[annotation.grasp_id])
     gripper_marker.apply_translation(-scene.centroid)
     scene.apply_translation(-scene.centroid)
     scene.add_geometry(gripper_marker)
@@ -144,82 +99,91 @@ def print_practice_results(s3: S3Client, user_id: str):
             for q in practice_result.question_results:
                 print(f"\t\tQuestion {q.question_idx}: {q.correct} ({q.time_taken:.2f} sec)")
 
-def plot_judgement_distribution(judgements: list[Judgement]):
-    judgement_counts = {}
-    for judgement in judgements:
-        label = judgement.judgement_label.name
-        judgement_counts[label] = judgement_counts.get(label, 0) + 1
-    keys = sorted(judgement_counts.keys())
-    counts = [judgement_counts[k] for k in keys]
-    total = sum(counts)
-    percentages = [count/total * 100 for count in counts]
-    
-    fig, ax = plt.subplots()
-    
-    bars = ax.bar(keys, counts)
-    ax.set_xlabel("Judgement Label")
-    ax.set_ylabel("Count")
-    
-    # Add percentage labels on top of each bar
-    for bar, percentage in zip(bars, percentages):
-        height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height,
-                f'{percentage:.1f}%',
-                ha='center', va='bottom')
+def parse_judgement_key(key: str):
+    basename = os.path.basename(key)
+    part1, annot_id = basename[:-len(".json")].split("___")
+    study_id, user_id = part1.split("__")
 
-    plt.show()
+    annot_id_parts = annot_id.split("__")
+    if len(annot_id_parts) == 5:
+        annot_id_parts = annot_id_parts[1:]
+    object_category, object_id, grasp_id, annotator_id = annot_id_parts
 
-if __name__ == "__main__":
-    import argparse
+    return {
+        "key": key,
+        "study_id": study_id,
+        "user_id": user_id,
+        "annot": {
+            "object_category": object_category,
+            "object_id": object_id,
+            "grasp_id": int(grasp_id),
+            "annotator_id": annotator_id
+        }
+    }
 
-    parser = argparse.ArgumentParser(description="Explore and visualize annotations.")
-    parser.add_argument("--plot-object-dist", action="store_true", help="Plot histogram of object distribution.")
-    parser.add_argument("--plot-judgement-dist", action="store_true", help="Plot judgement distribution.")
-    parser.add_argument("-v", "--visualize", nargs=3, metavar=("CATEGORY", "OBJ_ID", "GRASP_ID"), help="Visualize a specific observation.")
-    parser.add_argument("-r", "--random-viz", action="store_true", help="Visualize a random observation.")
-    parser.add_argument("-u", "--viz-uzer", help="Visualize all annotations from a specific user.")
-    parser.add_argument("--filtered", action="store_true", help="Use filtered annotations.")
-    parser.add_argument("--user-hist", action="store_true")
-    parser.add_argument("-p", "--practice-results", help="See practice results for a user.")
-    args = parser.parse_args()
+def get_judgement(s3: S3Client, local_dir: str, key: str):
+    local_path = os.path.join(local_dir, os.path.basename(key))
+    if not os.path.exists(local_path):
+        print(f"Downloading {key} to {local_path}")
+        s3.download_file(BUCKET_NAME, key, local_path)
+    with open(local_path, "r") as f:
+        return Judgement.model_validate_json(f.read())
+
+def main():
+    args = get_args()
 
     s3 = boto3.client("s3")
 
+    judgement_keys = list_s3_files(s3, BUCKET_NAME, JUDGEMENTS_PREFIX)
+    judgement_infos = [parse_judgement_key(key) for key in judgement_keys]
+
     local_dir = "data/judgements"
-    download_files(s3, local_dir, JUDGEMENTS_PREFIX)
-    judgements = process_judgements(local_dir)
 
-    print(f"Loaded {len(judgements)} judgements.")
-
-    if args.plot_object_dist:
-        plot_object_distribution([j.annotation for j in judgements])
-
-    if args.plot_judgement_dist:
-        plot_judgement_distribution(judgements)
+    print(f"Total judgements: {len(judgement_keys)}")
 
     if args.visualize:
         category, obj_id, grasp_id = args.visualize
-        judgement = next((j for j in judgements if j.annotation.obj.object_category == category and j.annotation.obj.object_id == obj_id and j.annotation.grasp_id == int(grasp_id)), None)
-        visualize_judgement(judgement)
+        to_viz = []
+        for info in judgement_infos:
+            if info["annot"]["object_category"] == category and info["annot"]["object_id"] == obj_id and info["annot"]["grasp_id"] == int(grasp_id):
+                to_viz.append(info)
+        judgements = [get_judgement(s3, local_dir, info["key"]) for info in to_viz]
+        print(f"Visualizing {len(judgements)} judgements")
+        for judgement in judgements:
+            visualize_judgement(s3, judgement)
 
     if args.random_viz:
-        judgement: Judgement = np.random.choice(judgements)
-        visualize_judgement(judgement)
+        judgement_info = judgement_infos[np.random.randint(len(judgement_infos))]
+        judgement = get_judgement(s3, local_dir, judgement_info["key"])
+        visualize_judgement(s3, judgement)
 
     if args.viz_uzer:
+        to_viz = []
+        for info in judgement_infos:
+            if info["user_id"] == args.viz_uzer:
+                to_viz.append(info["key"])
+        judgements = [get_judgement(s3, local_dir, key) for key in to_viz]
+        print(f"User {args.viz_uzer} has submitted {len(judgements)} judgements.")
         for judgement in judgements:
-            if judgement.user_id == args.viz_uzer:
-                visualize_judgement(judgement)
+            visualize_judgement(s3, judgement)
 
     if args.user_hist:
         user_hist = {}
-        for judgement in judgements:
-            user_hist[judgement.user_id] = user_hist.get(judgement.user_id, 0) + 1
-        users = [user for user in user_hist.keys() if user_hist[user] > 1]
-        plt.bar(users, [user_hist[user] for user in users])
-        plt.xticks(rotation=45, ha='right')
+        for info in judgement_infos:
+            user_hist[info["user_id"]] = user_hist.get(info["user_id"], 0) + 1
+        n_judgements = list(user_hist.values())
+        plt.hist(n_judgements, bins=30)
+        plt.xlabel("Number of judgements")
+        plt.ylabel("Number of users")
+        plt.title("Distribution of number of judgements per user")
+        plt.axvline(x=np.mean(n_judgements), color="red", linestyle="--", label="Mean")
+        plt.axvline(x=np.median(n_judgements), color="orange", linestyle="--", label="Median")
+        plt.legend()
         plt.tight_layout(pad=0)
         plt.show()
 
     if args.practice_results:
         print_practice_results(s3, args.practice_results)
+
+if __name__ == "__main__":
+    main()
