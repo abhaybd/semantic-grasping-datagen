@@ -22,14 +22,10 @@ STUDY_DESCRIPTION = f"""
 In this study, we are seeking to annotate data which will be used to help robots understand how to grasp and manipulate different types of everyday objects. Using a keyboard and mouse, participants will use a web interface to filter descriptions of 3D objects and grasps.
 </p>
 
-<p>
-This is a small test-run to iron out some issues. If you encounter any issues or have any feedback, please message the researchers!
-</p>
-
 <h2>Study Details</h2>
 
 <p>
-You will be shown a 3D view of an object and a grasp on the object, along with a description of how that object is being grasped. Your task is to determine if that description is accurate or not. Further instructions and details are available in the study. The study consists of {SCHEDULE_LENGTH} annotations, and should take no more than {DURATION} minutes. All answers should be in English.
+You will be shown a 3D view of an object and a grasp on the object, along with a description of how that object is being grasped. Your task is to determine if that description is accurate or not. Further instructions and details are available in the study. The study consists of at most {SCHEDULE_LENGTH} annotations, and should take no more than {DURATION} minutes. All answers should be in English.
 </p>
 
 <h2>About Us</h2>
@@ -42,6 +38,7 @@ We are a team of researchers at the Allen Institute for Artificial Intelligence 
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("internal_name")
+    parser.add_argument("--limit", type=int)
     return parser.parse_args()
 
 def create_study(token: str, internal_name: str, study_urls: list[str], accept_code: str, reject_code: str):
@@ -124,9 +121,9 @@ def main():
         overwrite=False,
         prolific_code=prolific_code,
         prolific_rejection_code=prolific_rejection_code,
-        prolific_study_id="{{%STUDY_ID%}}"
+        prolific_study_id="{{%STUDY_ID%}}",
+        limit=args.limit
     )
-    print(urls[:2])
 
     create_study(token, args.internal_name, urls, prolific_code, prolific_rejection_code)
 
