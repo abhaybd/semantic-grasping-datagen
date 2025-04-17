@@ -10,8 +10,9 @@ URL_BASE = "https://api.prolific.com/api/v1/"
 PROJECT_ID = "67ae4305014ce47c5304d3d9"  # Project ID for Embodied AI
 
 SCHEDULE_LENGTH = 5
-DURATION = 5  # minutes
+DURATION = 4  # minutes
 HOURLY_RATE = 1200  # cents
+MAX_SUBMISSIONS = 50
 
 DISTRIBUTION_RATE = 0.5
 
@@ -65,6 +66,10 @@ def create_study(token: str, internal_name: str, study_urls: list[str], accept_c
                         {
                             "action": "REQUEST_RETURN",
                             "return_reason": "Answered too many practice questions incorrectly, constituting a failed comprehension check."
+                        },
+                        {
+                            "action": "ADD_TO_PARTICIPANT_GROUP",
+                            "participant_group": "6800ce716908fe9c63af70e7"
                         }
                     ]
                 }
@@ -86,11 +91,22 @@ def create_study(token: str, internal_name: str, study_urls: list[str], accept_c
                     "filter_id": "current-country-of-residence",
                     "selected_values": ["0", "1"],
                 },
+                {
+                    "filter_id": "approval_rate",
+                    "selected_range": {
+                        "lower": 98,
+                        "upper": 100
+                    }
+                },
+                {
+                    "filter_id": "participant_group_blocklist",
+                    "selected_values": ["6800ce716908fe9c63af70e7"]
+                }
             ],
             "naivety_distribution_rate": DISTRIBUTION_RATE,
             "project": PROJECT_ID,
             "submissions_config": {
-                "max_submissions_per_participant": 100,
+                "max_submissions_per_participant": MAX_SUBMISSIONS,
                 "max_concurrent_submissions": -1
             },
             "study_labels": ["annotation"]
