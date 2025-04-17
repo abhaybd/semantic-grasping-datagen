@@ -1,6 +1,7 @@
 import argparse
 import os
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, Future, as_completed, wait
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, Future, as_completed, wait, CancelledError
+import traceback
 import threading
 
 import pandas as pd
@@ -100,9 +101,8 @@ def create_sample(data_dir: str, row: pd.Series, format: str):
     img_relpath = os.path.join("images", f"{scene_id}-{view_id}.png")
 
     with h5py.File(os.path.join(data_dir, row["scene_path"]), "r") as f:
-        obs = f[row["view_id"]][row["obs_id"]]
-        img = obs["rgb"][:]
-        grasp_pt = obs["grasp_point_px"][:]
+        img = f[row["rgb_key"]][:]
+        grasp_pt = f[row["view_id"]][row["obs_id"]]["grasp_point_px"][:]
     grasp_pt = grasp_pt / np.array([img.shape[1], img.shape[0]])
 
     sample = sample_fn(scene_id, view_id, obs_id, img_relpath, grasp_desc, grasp_pt)
@@ -123,9 +123,16 @@ def main():
     submit_semaphore = threading.Semaphore(4 * args.n_proc)
     with ProcessPoolExecutor(max_workers=args.n_proc) as executor:
         with tqdm(total=len(df), desc="Constructing samples") as pbar:
-            def on_job_done(_):
+            def on_job_done(f: Future):
                 submit_semaphore.release()
                 pbar.update(1)
+                try:
+                    f.result()
+                except CancelledError:
+                    pass
+                except:
+                    traceback.print_exc()
+                    executor.shutdown(wait=False, cancel_futures=True)
 
             futures: list[Future] = []
             for _, row in df.iterrows():
