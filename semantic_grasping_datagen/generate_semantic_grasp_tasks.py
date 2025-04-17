@@ -806,6 +806,37 @@ def refine_semantic_tasks(all_tasks, output_file):
 
     return refined_tasks
 
+def print_stats(cleaned):
+    num_cats = 0
+    num_tasks = 0
+    positive_scores = 0
+    negative_scores = 0
+    score_deltas = 0
+    valid_categories = set()
+    for category, grasp_to_tasks in cleaned.items():
+        if len(grasp_to_tasks) == 0:
+            continue
+        num_cats += 1
+        valid_categories.add(category)
+        for grasp, tasks in grasp_to_tasks.items():
+            num_tasks += len(tasks)
+            for task in tasks:
+                positive_scores += task["grasp_score"]
+                negative_scores += task["alternative_grasp_score"]
+                score_deltas += task["grasp_score"] - task["alternative_grasp_score"]
+
+    print(
+        f"{num_cats} categories out of {len(cleaned)},"
+        f" {num_tasks} tasks,"
+        f" {num_tasks / num_cats:.1f} tasks/category"
+    )
+    print(f"Missing categories {set(cleaned.keys()) - valid_categories}")
+    print(
+        f"Mean positive score {positive_scores / num_tasks:.1f}"
+        f", negative score {negative_scores / num_tasks:.1f}"
+        f", delta score {score_deltas / num_tasks:.1f}"
+    )
+
 
 if __name__ == "__main__":
 
@@ -830,6 +861,7 @@ if __name__ == "__main__":
             coverage,
             output_file=f"~/Desktop/semantic_task_cleaned_up{implicit_str}.json",
         )
+        print_stats(cleaned)
 
     main()
     print("DONE")
