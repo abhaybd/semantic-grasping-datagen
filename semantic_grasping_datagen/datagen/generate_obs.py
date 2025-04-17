@@ -1,5 +1,6 @@
-from concurrent.futures import ProcessPoolExecutor, as_completed, Future
+from concurrent.futures import ProcessPoolExecutor, wait, Future
 import multiprocessing as mp
+from typing import Any
 
 if __name__ == "__main__":
     try:
@@ -10,14 +11,14 @@ if __name__ == "__main__":
 from io import BytesIO
 import os
 import pickle
-import random
 from base64 import b64decode
 from contextlib import contextmanager
 import signal
+import threading
 
 import h5py
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 import yaml
 import open3d as o3d
 
@@ -43,16 +44,17 @@ def block_signals(signals: list[int]):
 
 worker_id = mp.Value("i", 0)
 
-def worker_init(img_size: tuple[int, int]):
+def worker_init(cfg: dict[str, Any]):
     n_gpus = int(os.popen("nvidia-smi --list-gpus | wc -l").read())
     with worker_id.get_lock():
         gpu_id = worker_id.value % n_gpus
         worker_id.value += 1
     os.environ["EGL_DEVICE_ID"] = str(gpu_id)
 
-    height, width = img_size
+    height, width = cfg["img_size"]
     renderer = pyrender.OffscreenRenderer(width, height)
     globals()["renderer"] = renderer
+    globals()["cfg"] = cfg
 
 def build_scene(data: dict[str, any]):
     glb_bytes = BytesIO(b64decode(data["glb"].encode("utf-8")))
@@ -101,6 +103,25 @@ def backproject(cam_K: np.ndarray, depth: np.ndarray):
     xyz = uvd @ np.expand_dims(np.linalg.inv(cam_K).T, axis=0)
     return xyz
 
+def estimate_normals(xyz: np.ndarray):
+    """
+    Args:
+        xyz: xyz coordinates of the points in the camera frame (N, H, W, 3)
+    Returns:
+        normals: normals of the points in the camera frame (N, H, W, 3)
+    """
+    batched_points = xyz.reshape(xyz.shape[0], -1, 3)  # (B, H * W, 3)
+    batched_normals = np.zeros_like(batched_points)
+    print(f"Estimating normals for {batched_points.shape[0]} views")
+    for i, points in enumerate(batched_points):
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points)
+        pcd.estimate_normals()
+        normals = np.asarray(pcd.normals)
+        batched_normals[i] = normals
+    normals = batched_normals.reshape(xyz.shape)  # (B, H, W, 3)
+    return normals
+
 def render(out_dir: str, scene_dir: str):
     scene_id = os.path.basename(scene_dir)
     out_scene_file = f"{out_dir}/{scene_id}.hdf5"
@@ -114,10 +135,11 @@ def render(out_dir: str, scene_dir: str):
     all_annotations: dict[str, tuple[Annotation, np.ndarray, np.ndarray]] = scene_data["annotations"]
     scene = build_scene(scene_data)
 
+    cfg: dict[str, Any] = globals()["cfg"]
     renderer: pyrender.OffscreenRenderer = globals()["renderer"]
     renderer.viewport_height, renderer.viewport_width = scene_data["img_size"]
 
-    view_observations: list[list[tuple[np.ndarray, Annotation, str]]] = []
+    view_observations: list[list[tuple[np.ndarray, np.ndarray, np.ndarray, Annotation, str]]] = []
     view_rgb: list[np.ndarray] = []
     view_xyz: list[np.ndarray] = []
     view_poses: list[np.ndarray] = []  # in standard camera axes conventions
@@ -145,42 +167,36 @@ def render(out_dir: str, scene_dir: str):
         for annot_id in view["annotations_in_view"]:
             annot, grasp_pose, grasp_point = all_annotations[annot_id]
             grasp_pose_in_cam_frame = np.linalg.solve(cam_pose_standard, grasp_pose)
-            grasp_point_in_cam_frame = cam_pose_standard[:3, :3].T @ (grasp_point - cam_pose_standard[:3, 3])  # closed form for rigid inverse
-            grasp_point_px = cam_K @ grasp_point_in_cam_frame
+            grasp_point_in_cam_frame: np.ndarray = cam_pose_standard[:3, :3].T @ (grasp_point - cam_pose_standard[:3, 3])  # closed form for rigid inverse
+            grasp_point_px: np.ndarray = cam_K @ grasp_point_in_cam_frame
             grasp_point_px = grasp_point_px[:2] / grasp_point_px[2]
             observations.append((grasp_pose_in_cam_frame, grasp_point_in_cam_frame, grasp_point_px, annot, annot_id))
         view_observations.append(observations)
 
-    batched_xyz = np.stack(view_xyz, axis=0)  # (B, H, W, 3)
-    batched_points = batched_xyz.reshape(batched_xyz.shape[0], -1, 3)  # (B, H * W, 3)
-    batched_normals = np.zeros_like(batched_points)
-    print(f"Estimating normals for {batched_points.shape[0]} views")
-    for i, points in enumerate(batched_points):
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(points)
-        pcd.estimate_normals()
-        normals = np.asarray(pcd.normals)
-        batched_normals[i] = normals
-    view_normals = batched_normals.reshape(batched_xyz.shape)  # (B, H, W, 3)
+    if cfg["estimate_normals"]:
+        view_normals = estimate_normals(np.stack(view_xyz, axis=0))
+    else:
+        view_normals = [None] * len(view_xyz)
 
     n_observations = 0
     with block_signals([signal.SIGINT]):
         with h5py.File(out_scene_file, "w") as f:
-            for view_idx, (rgb, xyz, normals, pose, cam_params, observations) in enumerate(zip(view_rgb, view_xyz, view_normals, view_poses, view_cam_params, view_observations)):
+            for view_idx in range(len(view_rgb)):
                 view_group = f.create_group(f"view_{view_idx}")
 
-                rgb_ds = view_group.create_dataset("rgb", data=rgb, compression="gzip")
+                rgb_ds = view_group.create_dataset("rgb", data=view_rgb[view_idx], compression="gzip")
                 rgb_ds.attrs['CLASS'] = np.string_('IMAGE')
                 rgb_ds.attrs['IMAGE_VERSION'] = np.string_('1.2')
                 rgb_ds.attrs['IMAGE_SUBCLASS'] = np.string_('IMAGE_TRUECOLOR')
                 rgb_ds.attrs['INTERLACE_MODE'] = np.string_('INTERLACE_PIXEL')
 
-                view_group.create_dataset("xyz", data=xyz, compression="gzip")
-                view_group.create_dataset("normals", data=normals, compression="gzip")
-                view_group.create_dataset("view_pose", data=pose, compression="gzip")
-                view_group.create_dataset("cam_params", data=cam_params, compression="gzip")
+                view_group.create_dataset("xyz", data=view_xyz[view_idx], compression="gzip")
+                if view_normals[view_idx] is not None:
+                    view_group.create_dataset("normals", data=view_normals[view_idx], compression="gzip")
+                view_group.create_dataset("view_pose", data=view_poses[view_idx], compression="gzip")
+                view_group.create_dataset("cam_params", data=view_cam_params[view_idx], compression="gzip")
 
-                for obs_idx, (grasp_pose, grasp_point, grasp_point_px, annot, annot_id) in enumerate(observations):
+                for obs_idx, (grasp_pose, grasp_point, grasp_point_px, annot, annot_id) in enumerate(view_observations[view_idx]):
                     obs_group = view_group.create_group(f"obs_{obs_idx}")
                     obs_group.create_dataset("grasp_pose", data=grasp_pose, compression="gzip")
                     obs_group.create_dataset("grasp_point", data=grasp_point, compression="gzip")
@@ -198,54 +214,46 @@ def render(out_dir: str, scene_dir: str):
                     n_observations += 1
     return n_observations
 
-class DummyExecutor:
-    def __init__(self, initializer, initargs, **kwargs):
-        initializer(*initargs)
-
-    def submit(self, fn, *args, **kwargs):
-        ret = fn(*args, **kwargs)
-        f = Future()
-        f.set_result(ret)
-        return f
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args, **kwargs):
-        pass
+def get_desc(n_generated_obs: int):
+    return f"Processing scenes ({n_generated_obs} new observations)"
 
 @hydra.main(version_base=None, config_path="../../config", config_name="obs_gen.yaml")
 def main(cfg: DictConfig):
+    if missing_keys := OmegaConf.missing_keys(cfg):
+        raise ValueError(f"Missing keys: {missing_keys}")
+
     in_dir = cfg["scene_dir"]
     out_dir = cfg["out_dir"]
     os.makedirs(out_dir, exist_ok=True)
 
     nproc = cfg["n_proc"] or os.cpu_count()
-    multiproc = nproc > 1
     generated_observations = 0
-    with (ProcessPoolExecutor if multiproc else DummyExecutor)(
+    gen_obs_lock = threading.Lock()
+    submit_semaphore = threading.Semaphore(4 * nproc)
+    with ProcessPoolExecutor(
         max_workers=nproc,
         initializer=worker_init,
-        initargs=(cfg["img_size"],)
+        initargs=(OmegaConf.to_container(cfg),)
     ) as executor:
-        while True:
-            scenes: set[str] = set(fn for fn in os.listdir(in_dir) if os.path.isdir(f"{in_dir}/{fn}"))
-            processed_scenes: set[str] = set(fn.split(".")[0] for fn in os.listdir(out_dir) if fn.endswith(".hdf5"))
-            print(f"Total processed scenes: {len(processed_scenes)}, generated observations: {generated_observations}")
-
-            batch = list(scenes - processed_scenes)
-            if len(batch) == 0:
-                break
-            random.shuffle(batch)  # shuffled to avoid different workers processing the same scenes
-            batch = batch[:min(len(batch), 4 * nproc)]
+        scenes: set[str] = set(fn for fn in os.listdir(in_dir) if os.path.isdir(f"{in_dir}/{fn}"))
+        processed_scenes: set[str] = set(fn.split(".")[0] for fn in os.listdir(out_dir) if fn.endswith(".hdf5"))
+        to_process = list(scenes - processed_scenes)
+        with tqdm(total=len(scenes), initial=len(processed_scenes), desc=get_desc(generated_observations)) as pbar:
+            def on_job_done(future: Future):
+                nonlocal generated_observations
+                submit_semaphore.release()
+                pbar.update(1)
+                with gen_obs_lock:
+                    generated_observations += future.result()
+                    pbar.set_description(get_desc(generated_observations))
 
             futures: list[Future] = []
-            # if not multiproc, work happens here - otherwise happens in next loop
-            for fn in tqdm(batch, desc="Rendering", dynamic_ncols=True, disable=multiproc):
-                futures.append(executor.submit(render, out_dir, f"{in_dir}/{fn}"))
-            for f in tqdm(as_completed(futures), total=len(futures), desc="Rendering", dynamic_ncols=True, smoothing=0, disable=(not multiproc)):
-                generated_observations += f.result()
-
+            for fn in to_process:
+                submit_semaphore.acquire()
+                future = executor.submit(render, out_dir, f"{in_dir}/{fn}")
+                future.add_done_callback(on_job_done)
+                futures.append(future)
+            wait(futures)
 
 if __name__ == "__main__":
     main()
