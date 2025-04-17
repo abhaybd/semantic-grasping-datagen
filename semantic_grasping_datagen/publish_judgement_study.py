@@ -10,9 +10,10 @@ URL_BASE = "https://api.prolific.com/api/v1/"
 PROJECT_ID = "67ae4305014ce47c5304d3d9"  # Project ID for Embodied AI
 
 SCHEDULE_LENGTH = 5
-DURATION = 4  # minutes
+DURATION = 5  # minutes
 HOURLY_RATE = 1200  # cents
 MAX_SUBMISSIONS = 50
+MAX_CONCURRENT_SUBMISSIONS = 150
 
 DISTRIBUTION_RATE = 0.5
 
@@ -107,7 +108,7 @@ def create_study(token: str, internal_name: str, study_urls: list[str], accept_c
             "project": PROJECT_ID,
             "submissions_config": {
                 "max_submissions_per_participant": MAX_SUBMISSIONS,
-                "max_concurrent_submissions": -1
+                "max_concurrent_submissions": MAX_CONCURRENT_SUBMISSIONS
             },
             "study_labels": ["annotation"]
         }
