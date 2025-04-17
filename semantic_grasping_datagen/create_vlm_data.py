@@ -1,6 +1,6 @@
 import argparse
 import os
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, Future, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, Future, as_completed, wait
 import threading
 
 import pandas as pd
@@ -100,7 +100,10 @@ def create_sample(data_dir: str, row: pd.Series, format: str):
     img_relpath = os.path.join("images", f"{scene_id}-{view_id}.png")
 
     with h5py.File(os.path.join(data_dir, row["scene_path"]), "r") as f:
-        grasp_pt = f[row["view_id"]][row["obs_id"]]["grasp_point_px"][:]
+        obs = f[row["view_id"]][row["obs_id"]]
+        img = obs["rgb"][:]
+        grasp_pt = obs["grasp_point_px"][:]
+    grasp_pt = grasp_pt / np.array([img.shape[1], img.shape[0]])
 
     sample = sample_fn(scene_id, view_id, obs_id, img_relpath, grasp_desc, grasp_pt)
     return sample
