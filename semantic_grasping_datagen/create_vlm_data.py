@@ -67,15 +67,6 @@ def create_molmo_sample(scene_id: str, view_id: str, obs_id: str, image_path: st
         ]
     }
 
-def get_grasp_point(grasp_pose: np.ndarray, cam_params: np.ndarray, width: int, height: int):
-    # TODO: this should be done using closest-point queries to the mesh
-    assert grasp_pose.shape == (4, 4)
-    grasp_pos_m = grasp_pose[:3, 3] + grasp_pose[:3, 2] * 0.112
-    points_px = cam_params @ grasp_pos_m
-    points_px = points_px[:2] / points_px[2]
-    points_frac = points_px / np.array([width, height])
-    return points_frac
-
 def copy_image(scene_path: str, scene_id: str, view_id: str, rgb_key: str, data_dir: str, out_dir: str):
     img_relpath = os.path.join("images", f"{scene_id}-{view_id}.png")
 
@@ -109,11 +100,8 @@ def create_sample(data_dir: str, row: pd.Series, format: str):
     img_relpath = os.path.join("images", f"{scene_id}-{view_id}.png")
 
     with h5py.File(os.path.join(data_dir, row["scene_path"]), "r") as f:
-        img_h, img_w = f[row["rgb_key"]].shape[:-1]
-        grasp_pose = f[row["grasp_pose_key"]][:]
-        cam_params = f[view_id]["cam_params"][:]
+        grasp_pt = f[row["view_id"]][row["obs_id"]]["grasp_point_px"][:]
 
-    grasp_pt = get_grasp_point(grasp_pose, cam_params, img_w, img_h)
     sample = sample_fn(scene_id, view_id, obs_id, img_relpath, grasp_desc, grasp_pt)
     return sample
 
