@@ -8,6 +8,7 @@ import trimesh
 from multiprocessing import Event
 from itertools import count
 import h5py
+import pyrender
 
 from acronym_tools import load_mesh, load_grasps
 
@@ -84,6 +85,15 @@ def random_delta_rot(roll_range: float, pitch_range: float, yaw_range: float):
     pitch = np.random.uniform(-pitch_range, pitch_range)
     yaw = np.random.uniform(-yaw_range, yaw_range)
     return R.from_euler("xyz", [roll, pitch, yaw]).as_matrix()
+
+def trimesh_scene_to_pyrender(tr_scene: trimesh.Scene, bg_color=None, ambient_light=None):
+    geometries = {name: pyrender.Mesh.from_trimesh(geom)
+                      for name, geom in tr_scene.geometry.items()}
+    scene_pr = pyrender.Scene(bg_color=bg_color, ambient_light=ambient_light)
+    for node in tr_scene.graph.nodes_geometry:
+        pose, geom_name = tr_scene.graph[node]
+        scene_pr.add(geometries[geom_name], name=geom_name, pose=pose)
+    return scene_pr
 
 class MeshLibrary(object):
     def __init__(self, data_dir: str, library: dict[str, set[str]], load_kwargs: dict | None = None):

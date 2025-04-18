@@ -1,4 +1,4 @@
-from concurrent.futures import ProcessPoolExecutor, wait, Future
+from concurrent.futures import ProcessPoolExecutor, wait, Future, CancelledError
 import multiprocessing as mp
 from typing import Any
 
@@ -15,6 +15,7 @@ from base64 import b64decode
 from contextlib import contextmanager
 import signal
 import threading
+import traceback
 
 import h5py
 import hydra
@@ -32,6 +33,7 @@ import trimesh
 
 from semantic_grasping_datagen.annotation import Annotation
 from semantic_grasping_datagen.utils import tqdm
+from semantic_grasping_datagen.datagen.datagen_utils import trimesh_scene_to_pyrender
 
 @contextmanager
 def block_signals(signals: list[int]):
@@ -59,7 +61,7 @@ def worker_init(cfg: dict[str, Any]):
 def build_scene(data: dict[str, any]):
     glb_bytes = BytesIO(b64decode(data["glb"].encode("utf-8")))
     tr_scene: trimesh.Scene = trimesh.load(glb_bytes, file_type="glb")
-    scene = pyrender.Scene.from_trimesh_scene(tr_scene)
+    scene = trimesh_scene_to_pyrender(tr_scene)
 
     for light in data["lighting"]:
         light_type = getattr(pyrender.light, light["type"])
@@ -122,6 +124,36 @@ def estimate_normals(xyz: np.ndarray):
     normals = batched_normals.reshape(xyz.shape)  # (B, H, W, 3)
     return normals
 
+def generate_renders(renderer: pyrender.OffscreenRenderer, scene: pyrender.Scene):
+    color, depth = renderer.render(scene, flags=pyrender.RenderFlags.SHADOWS_DIRECTIONAL)
+
+    node_map = {}
+    object_names: list[str] = []
+    for i, node in enumerate(scene.mesh_nodes, start=1):
+        if node.name:
+            name = node.name
+            if name.startswith("object_"):
+                name = name[len("object_"):]
+            name = name.replace("/geometry_0", "")
+        else:
+            name = f"node_{i}"
+        node_map[node] = ((i >> 16) & 0xFF, (i >> 8) & 0xFF, i & 0xFF)
+        object_names.append(name)
+    seg_rgb, _ = renderer.render(scene, seg_node_map=node_map, flags=pyrender.RenderFlags.SEG)
+    seg_rgb = seg_rgb.astype(np.uint32)
+    seg: np.ndarray = (seg_rgb[..., 0] << 16) | (seg_rgb[..., 1] << 8) | seg_rgb[..., 2]
+
+    in_view_names = []
+    new_seg = np.zeros_like(seg)
+    for i, name in enumerate(object_names, start=1):
+        mask = seg == i
+        if np.any(mask):
+            in_view_names.append(name)
+            new_seg[mask] = len(in_view_names)
+    seg = new_seg
+
+    return color, depth, seg, in_view_names
+
 def render(out_dir: str, scene_dir: str):
     scene_id = os.path.basename(scene_dir)
     out_scene_file = f"{out_dir}/{scene_id}.hdf5"
@@ -142,8 +174,10 @@ def render(out_dir: str, scene_dir: str):
     view_observations: list[list[tuple[np.ndarray, np.ndarray, np.ndarray, Annotation, str]]] = []
     view_rgb: list[np.ndarray] = []
     view_xyz: list[np.ndarray] = []
+    view_seg: list[np.ndarray] = []
     view_poses: list[np.ndarray] = []  # in standard camera axes conventions
     view_cam_params: list[np.ndarray] = []
+    view_object_names: list[list[str]] = []
     for view in scene_data["views"]:
         cam_K = np.array(view["cam_K"])
         cam_pose_trimesh = np.array(view["cam_pose"])
@@ -159,10 +193,13 @@ def render(out_dir: str, scene_dir: str):
         view_poses.append(cam_pose_standard)
         view_cam_params.append(cam_K)
 
-        color, depth = renderer.render(scene, flags=pyrender.RenderFlags.SHADOWS_DIRECTIONAL)
+        color, depth, seg, object_names = generate_renders(renderer, scene)
+
         xyz = backproject(cam_K, depth).astype(np.float32)
         view_rgb.append(color)
         view_xyz.append(xyz)
+        view_seg.append(seg)
+        view_object_names.append(object_names)
         observations = []
         for annot_id in view["annotations_in_view"]:
             annot, grasp_pose, grasp_point = all_annotations[annot_id]
@@ -191,6 +228,8 @@ def render(out_dir: str, scene_dir: str):
                 rgb_ds.attrs['INTERLACE_MODE'] = np.string_('INTERLACE_PIXEL')
 
                 view_group.create_dataset("xyz", data=view_xyz[view_idx], compression="gzip")
+                view_group.create_dataset("seg", data=view_seg[view_idx], compression="gzip")
+                view_group["object_names"] = view_object_names[view_idx]
                 if view_normals[view_idx] is not None:
                     view_group.create_dataset("normals", data=view_normals[view_idx], compression="gzip")
                 view_group.create_dataset("view_pose", data=view_poses[view_idx], compression="gzip")
