@@ -283,7 +283,13 @@ def main(cfg: DictConfig):
                 submit_semaphore.release()
                 pbar.update(1)
                 with gen_obs_lock:
-                    generated_observations += future.result()
+                    try:
+                        generated_observations += future.result()
+                    except CancelledError:
+                        pass
+                    except:
+                        traceback.print_exc()
+                        executor.shutdown(wait=False, cancel_futures=True)
                     pbar.set_description(get_desc(generated_observations))
 
             futures: list[Future] = []
@@ -292,7 +298,7 @@ def main(cfg: DictConfig):
                 future = executor.submit(render, out_dir, f"{in_dir}/{fn}")
                 future.add_done_callback(on_job_done)
                 futures.append(future)
-            wait(futures)
+            wait(futures, return_when="FIRST_EXCEPTION")
 
 if __name__ == "__main__":
     main()
