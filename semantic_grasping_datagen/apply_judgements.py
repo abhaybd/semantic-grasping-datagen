@@ -30,6 +30,9 @@ def filter_judgement(s3: S3Client, out_dir: str, judgement_key: str):
 
     annotation = judgement.annotation
     if judgement.judgement_label == JudgementLabel.INACCURATE:
+        if judgement.correct_grasp_description is None:
+            print(f"Judgement {judgement_key} is INACCURATE but correct_grasp_description is None!")
+            return 0
         annotation = annotation.model_copy(update={"grasp_description": judgement.correct_grasp_description})
 
     annot_id = f"{annotation.study_id}__{annotation.obj.object_category}__{annotation.obj.object_id}__{annotation.grasp_id}__{annotation.user_id}"
