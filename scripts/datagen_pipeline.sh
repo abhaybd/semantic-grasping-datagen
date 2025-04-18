@@ -2,9 +2,9 @@
 
 set -euxo pipefail
 
-DATASET_PATH=/data/abhayd/semantic-grasping-datasets/0416_1112
+DATASET_PATH=/data/abhayd/semantic-grasping-datasets/0417_2121
 ASSETS_PATH=/data/abhayd/semantic-grasping-datasets/acronym_processed
-ANNOTS_PATH=/data/abhayd/semantic-grasping-datasets/0410_2243/annotations
+ANNOTS_PATH=/data/abhayd/semantic-grasping-datasets/synthetic_annotations_filtered_0417_2015
 
 python semantic_grasping_datagen/datagen/datagen.py \
     out_dir=${DATASET_PATH}/scenes \
