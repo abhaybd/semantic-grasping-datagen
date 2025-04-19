@@ -8,12 +8,13 @@ class GraspDescriptionEncoder(nn.Module):
     QUERY_PFX = "Instruct: Given a description of a grasp, retrieve grasp descriptions that describe similar grasps on similar objects\nQuery: "
     MAX_LENGTH = 32768
 
-    def __init__(self, device: str = "cpu", full_precision: bool = False):
+    def __init__(self, device: str = "cpu", full_precision: bool = False, query_pfx: str | None = None):
         super().__init__()
         self.device = torch.device(device)
         kwargs = {"torch_dtype": "bfloat16"} if not full_precision else {}
         self.nv_embed = NVEmbedModel.from_pretrained("nvidia/NV-Embed-v2", device_map=device, **kwargs)
         self.nv_embed.eval()
+        self.query_pfx = query_pfx if query_pfx is not None else self.QUERY_PFX
 
     def to(self, device):
         if isinstance(device, str):
@@ -23,7 +24,7 @@ class GraspDescriptionEncoder(nn.Module):
 
     @torch.no_grad()
     def forward(self, descriptions: list[str], is_query: bool = False):
-        instructions = self.QUERY_PFX if is_query else ""
+        instructions = self.query_pfx if is_query else ""
         with torch.autocast(self.device.type, dtype=torch.bfloat16):
             return self.nv_embed.encode(descriptions, instruction=instructions, max_length=self.MAX_LENGTH)
 
