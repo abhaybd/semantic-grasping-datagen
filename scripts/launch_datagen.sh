@@ -8,7 +8,6 @@ gantry run --budget ai2/prior -w ai2/abhayd \
     --cluster ai2/jupiter-cirrascale-2 \
     --cluster ai2/neptune-cirrascale \
     --cluster ai2/saturn-cirrascale \
-    --cluster ai2/test-h100 \
     --cluster ai2/ceres-cirrascale \
     --allow-dirty \
     -- \
