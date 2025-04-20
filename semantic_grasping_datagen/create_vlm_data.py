@@ -1,3 +1,7 @@
+"""
+This is deprecated. Used for creating datasets for (grasp desc, grasp point) pairs.
+"""
+
 import argparse
 import os
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, Future, as_completed, wait, CancelledError
