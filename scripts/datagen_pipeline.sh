@@ -19,7 +19,7 @@ python semantic_grasping_datagen/datagen/match_tasks_to_grasps.py \
     ${DATASET_PATH}/observations \
     ${DATASET_PATH}/task_point \
     --n-proc 32
-python semantic_grasping_datagen/datagen/package_molmo_data.py \
+python semantic_grasping_datagen/datagen/package_pointing_data.py \
     ${DATASET_PATH}/task_point/matched_tasks.csv \
     ${DATASET_PATH}/observations \
     ${DATASET_PATH}/molmo_data \
