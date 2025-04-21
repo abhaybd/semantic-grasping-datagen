@@ -5,7 +5,8 @@ set -euxo pipefail
 DATASET_PATH=/data/abhayd/semantic-grasping-datasets/0417_2121
 ASSETS_PATH=/data/abhayd/semantic-grasping-datasets/acronym_processed
 ANNOTS_PATH=/data/abhayd/semantic-grasping-datasets/synthetic_annotations_filtered_0417_2015
-TASKS_JSON=/data/abhayd/semantic-grasping-datasets/semantic_task_cleaned_up_implicit.jsonn
+TASKS_JSON=/data/abhayd/semantic-grasping-datasets/semantic_task_cleaned_up_implicit.json
+FORMAT=molmo
 
 python semantic_grasping_datagen/datagen/datagen.py \
     out_dir=${DATASET_PATH}/scenes \
@@ -22,5 +23,6 @@ python semantic_grasping_datagen/datagen/match_tasks_to_grasps.py \
 python semantic_grasping_datagen/datagen/package_pointing_data.py \
     ${DATASET_PATH}/task_point/matched_tasks.csv \
     ${DATASET_PATH}/observations \
-    ${DATASET_PATH}/molmo_data \
+    ${DATASET_PATH}/${FORMAT}_data \
+    --format ${FORMAT} \
     --n-proc 32
