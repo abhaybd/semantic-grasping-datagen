@@ -25,4 +25,5 @@ python semantic_grasping_datagen/datagen/package_pointing_data.py \
     ${DATASET_PATH}/observations \
     ${DATASET_PATH}/${FORMAT}_data \
     --format ${FORMAT} \
+    --cot \
     --n-proc 32

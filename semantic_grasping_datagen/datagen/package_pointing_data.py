@@ -126,24 +126,28 @@ def main():
 
     submit_semaphore = threading.Semaphore(4 * args.n_proc)
     with ProcessPoolExecutor(max_workers=args.n_proc) as executor:
-        with tqdm(total=len(df), desc="Constructing samples") as pbar:
-            lines: list[str] = []
-            callback = partial(on_job_done, submit_semaphore=submit_semaphore, pbar=pbar, executor=executor)
-            futures: list[Future] = []
-            for _, row in df.iterrows():
-                submit_semaphore.acquire()
-                future = executor.submit(create_sample, args.obs_dir, row, args.cot, args.format)
-                future.add_done_callback(callback)
-                futures.append(future)
-            for future in as_completed(futures):
-                lines.append(future.result())
+        save_path = os.path.join(args.out_dir, f"{args.format}_data{'_cot' if args.cot else ''}.json")
+        if not os.path.exists(save_path):
+            with tqdm(total=len(df), desc="Constructing samples") as pbar:
+                lines: list[str] = []
+                callback = partial(on_job_done, submit_semaphore=submit_semaphore, pbar=pbar, executor=executor)
+                futures: list[Future] = []
+                for _, row in df.iterrows():
+                    submit_semaphore.acquire()
+                    future = executor.submit(create_sample, args.obs_dir, row, args.cot, args.format)
+                    future.add_done_callback(callback)
+                    futures.append(future)
+                for future in as_completed(futures):
+                    lines.append(future.result())
 
-        save_path = os.path.join(args.out_dir, f"{args.format}_data.json")
-        print(f"Generated {len(lines)} data points, saving to {save_path}")
-        with open(save_path, "w") as f:
-            json.dump(lines, f, indent=2)
+            print(f"Generated {len(lines)} data points, saving to {save_path}")
+            with open(save_path, "w") as f:
+                json.dump(lines, f, indent=2)
+        else:
+            print(f"Already generated JSON data, skipping.")
 
         if args.copy_images:
+            os.makedirs(os.path.join(args.out_dir, "images"), exist_ok=True)
             obs_files = [fn for fn in os.listdir(args.obs_dir) if fn.endswith(".hdf5")]
             with tqdm(total=len(obs_files), desc="Copying images") as pbar:
                 callback = partial(on_job_done, submit_semaphore=submit_semaphore, pbar=pbar, executor=executor)
