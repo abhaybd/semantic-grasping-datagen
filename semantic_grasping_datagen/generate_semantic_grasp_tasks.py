@@ -1,6 +1,9 @@
 import copy
 import os.path
 import json
+from collections import defaultdict
+
+import numpy as np
 
 from semantic_grasping_datagen.langchain_wrapper import LangchainWrapper, ChatOpenAI
 
@@ -245,31 +248,31 @@ def semantic_tasks_from_grasps(all_grasp_infos, output_file):
         print(it, len(remaining_categories), category)
 
         prompt = (
-            f" We need to generate semantic manipulation tasks requiring each of the given grasps in the list below. The task definition might"
-            f" require a second gripper for completion, as long as the grasp is feasible with a single gripper."
-            " Please process the tasks for each grasp in the following way:\n"
-            "1. Clear Object. Ensure that every task mentions the object type (e.g., 'the mug') unless it is obvious without it.\n"
+            f" We need to generate semantic manipulation tasks requiring each of the given grasps in the list provided"
+            f" at the end. Please generate the tasks for each grasp with the following design criteria, where each"
+            f" criterion is first identified by a short name and then described in more detail:\n"
+            "1. Clear target. Ensure that every task mentions the object type (e.g., 'the mug') unless it is obvious without it.\n"
             "2. Unknown state. Avoid tasks that make assumptions about the state of the object (e.g. being open/closed, empty/full, etc.).\n"
             "3. Unknown context. Avoid tasks that make assumptions about the surroundings/context of the object (i.e. assuming the presence of any other objects of the same category or others in the scene, other than the presence of a table top or similar surface underneath the object at the start).\n"
-            "4. No grasp references. Avoid references to the part of the object being grasped (e.g., 'by the handle') or any the grasp definition parameters in the task definition.\n"
+            "4. Implicit grasp. Avoid references to the part of the object being grasped (e.g., 'by the handle') or any of the grasp definition parameters in the task definition.\n"
             "5. Single gripper. While you should favor single-gripper task definitions, if a second gripper is implied or required, it should not be assumed to be present for the initial grasp, but rather during a subsequent step (e.g. if 'while another gripper does ...' seems reasonable, convert it into 'for posterior ...').\n"
             "6. Physical plausibility. Avoid tasks that require physically implausible configurations, like the object being placed standing on some surface while held from underneath.\n"
-            "7. Compact description. Write tasks in compact and intelligible natural language and avoid technical formating like snake case.\n"
-            "8. No pick and place. If possible, avoid simple pick and place tasks, and try to focus on semantic tasks, i.e., they should rely on some affordance of the object or consider some compositional task where we manipulate the object towards some meaningful goal.\n"
-            "9. Try to generate four semantic tasks per grasp, making sure that the tasks are incompatible with the alternative grasps in each category"
-            " (they should imply different use-cases or affordances).\n"
-            "10. If both provided grasps seem too similar, or the object category or object parts to grasp too coarse/vague, favor an empty list of tasks for each grasp.\n"
-            "For each generated semantic task we need a dict with the entries:\n"
-            " - `text`: the semantic task text, without mentioning the grasped part or approach direction, and mentioning the target object if needed,\n"
-            " - `num_grippers`: the number of grippers required to complete the semantic task\n"
-            " - `grasp_critique`: short string justifying the lack of validity of the assigned grasp\n"
-            " - `grasp_score`: score in range 0 (low) to 9 (high) according to the validity of the assigned grasp,\n"
-            " - `alternative_grasp_critique`: short string justifying the possible validity of the alternative grasp,\n"
-            " - `alternative_grasp_score`: score in range 0 to 9 according to the validity of the alternative grasp,\n"
-            " - `weakest_point`: index of the design validity point (1 to 8) most poorly fulfilled\n"
-            " - `task_criteria_fulfilled`: score the fulfillment of points 1 to 8 in the range 0 (poor) to 9 (perfect fulfillment)\n"
-            "For all scores and critiques you should take into account both available grasps for the object category and all validity criteria (points 1 to 8)."
-            " Feel free to reason about the problem and generate a JSON dictionary mapping each grasp id to a list of four semantic task dicts."
+            "7. Compact instruction. Write tasks in compact and intelligible natural language and avoid technical formating like snake case.\n"
+            "8. Semantic meaning. Avoid simple pick and place tasks, and try to focus on semantic tasks, i.e., they should rely on some affordance of the object or consider some compositional task where we must manipulate the object towards some meaningful goal.\n"
+            "9. Identifiability. If both provided grasps, object category or parts to grasp seem too coarse/vague/hard to identify, avoid defining any task and favor an empty list of tasks for each grasp.\n"
+            "Try to generate four valid semantic tasks per grasp, making sure that the tasks are incompatible with"
+            " the alternative grasp for the object category (they should imply different use cases or affordances)."
+            " For each generated semantic task we need a dict with the entries:\n"
+            " - `text`: the semantic task instruction, without mentioning the grasped part or approach direction, and mentioning the target object if needed,\n"
+            " - `num_grippers`: the number of grippers required to complete the semantic task,\n"
+            " - `grasp_critique`: short string justifying the lack of validity of the assigned grasp towards completing the task,\n"
+            " - `grasp_score`: validity score in range 0 (low) to 9 (high) based on the grasp_critique,\n"
+            " - `alternative_grasp_critique`: short string justifying the possible validity of the alternative grasp towards completing the task,\n"
+            " - `alternative_grasp_score`: validity score in range 0 to 9 according based on the alternative_grasp_critique,\n"
+            " - `weakest_point`: short name (string) of the task design criterion point most poorly fulfilled,\n"
+            " - `task_criteria_fulfilled`: score the fulfillment of the weakest point in the range 0 (poor) to 9 (perfect fulfillment)\n"
+            "Feel free to reason about the problem and generate a JSON dictionary mapping each grasp"
+            " id to the list of semantic task dicts."
         )
 
         prompt += (
@@ -333,6 +336,7 @@ def print_stats(cleaned):
     negative_scores = 0
     score_deltas = 0
     valid_categories = set()
+    weakest_points = defaultdict(list)
     for category, grasp_to_info_tasks in cleaned.items():
         if len(grasp_to_info_tasks) == 0:
             continue
@@ -345,6 +349,7 @@ def print_stats(cleaned):
                 positive_scores += task["grasp_score"]
                 negative_scores += task["alternative_grasp_score"]
                 score_deltas += task["grasp_score"] - task["alternative_grasp_score"]
+                weakest_points[task["weakest_point"].lower()].append(int(task["task_criteria_fulfilled"]))
 
     print(
         f"{num_cats} categories out of {len(cleaned)},"
@@ -357,6 +362,11 @@ def print_stats(cleaned):
         f", negative score {negative_scores / num_tasks:.1f}"
         f", delta score {score_deltas / num_tasks:.1f}"
     )
+
+    print("Weakest defined task points:")
+    weakest_keys = sorted(list(weakest_points.keys()), key=lambda x: len(weakest_points[x]), reverse=True)
+    for weakest_key in weakest_keys:
+        print(f"{len(weakest_points[weakest_key])} {weakest_key} {np.mean(weakest_points[weakest_key]):.1f}")
 
 
 if __name__ == "__main__":
