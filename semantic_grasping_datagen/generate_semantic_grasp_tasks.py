@@ -337,6 +337,7 @@ def print_stats(cleaned):
     score_deltas = 0
     valid_categories = set()
     weakest_points = defaultdict(list)
+    task_criteria_scores = []
     for category, grasp_to_info_tasks in cleaned.items():
         if len(grasp_to_info_tasks) == 0:
             continue
@@ -350,6 +351,7 @@ def print_stats(cleaned):
                 negative_scores += task["alternative_grasp_score"]
                 score_deltas += task["grasp_score"] - task["alternative_grasp_score"]
                 weakest_points[task["weakest_point"].lower()].append(int(task["task_criteria_fulfilled"]))
+                task_criteria_scores.append(int(task["task_criteria_fulfilled"]))
 
     print(
         f"{num_cats} categories out of {len(cleaned)},"
@@ -363,7 +365,7 @@ def print_stats(cleaned):
         f", delta score {score_deltas / num_tasks:.1f}"
     )
 
-    print("Weakest defined task points:")
+    print(f"Weakest defined task points (mean {np.mean(task_criteria_scores):.1f}):")
     weakest_keys = sorted(list(weakest_points.keys()), key=lambda x: len(weakest_points[x]), reverse=True)
     for weakest_key in weakest_keys:
         print(f"{len(weakest_points[weakest_key])} {weakest_key} {np.mean(weakest_points[weakest_key]):.1f}")
