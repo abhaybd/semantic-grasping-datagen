@@ -29,6 +29,20 @@ def get_args():
     return parser.parse_args()
 
 SYS_PROMPT = """
+You are a linguistic and robotic expert. You are tasked with matching a candidate grasp description to one of multiple options, called annotated grasp descriptions.
+
+You will be given a candidate grasp description, which is a description of how a robot could grasp a specific object.
+You will also be given a list of annotated grasp descriptions, which are multiple known descriptions of how a robot could grasp the same object.
+You should choose the annotated grasp description that has the same meaning as the candidate grasp description.
+In this case, "meaning" means that the candidate grasp description and the annotated grasp description describe a grasp on a similar part of the object, in a similar manner.
+
+For example, if the candidate grasp description is "grasp the midpoint of the handle of the mug", and one of the annotated grasp descriptions is "grasp the handle of the mug", then you should choose that annotated grasp description.
+
+If there are no suitably matching annotated grasp descriptions, you should return None to indicate that there is no match.
+
+You should output a JSON object with the following fields:
+- candidate_grasp_desc: the candidate grasp description which you are prompted with
+- matching_grasp_desc: the annotated grasp description that matches the candidate grasp description, or None if there is no match
 """.strip()
 
 
@@ -40,13 +54,13 @@ def get_annotated_grasp_library(obs_dir: str, out_dir: str) -> dict[str, dict[st
     Returns:
         annotated_grasp_library: dictionary mapping object categories to object ids to list of grasp descriptions
     """
-    cache_path = os.path.join(out_dir, "annotated_grasp_library.pkl")
+    cache_path = os.path.join(out_dir, "annotated_grasp_library.json")
     if os.path.exists(cache_path):
-        with open(cache_path, "rb") as f:
-            library = pickle.load(f)
+        with open(cache_path, "r") as f:
+            library = json.load(f)
         return library
     
-    grasp_dict: dict[str, dict[str, list[str]]] = {}  # category -> object_id -> list of grasp descriptions
+    grasp_dict: dict[str, dict[str, set[str]]] = {}  # category -> object_id -> set of grasp descriptions
     for fn in tqdm(os.listdir(obs_dir), desc="Loading annotated grasp descriptions"):
         if not fn.endswith(".hdf5"):
             continue
@@ -63,11 +77,15 @@ def get_annotated_grasp_library(obs_dir: str, out_dir: str) -> dict[str, dict[st
                     if obj_category not in grasp_dict:
                         grasp_dict[obj_category] = {}
                     if obj_id not in grasp_dict[obj_category]:
-                        grasp_dict[obj_category][obj_id] = []
-                    grasp_dict[obj_category][obj_id].append(grasp_desc)
+                        grasp_dict[obj_category][obj_id] = set()
+                    grasp_dict[obj_category][obj_id].add(grasp_desc)
 
-    with open(cache_path, "wb") as f:
-        pickle.dump(grasp_dict, f)
+    for obj_category in grasp_dict.keys():
+        for obj_id in grasp_dict[obj_category].keys():
+            grasp_dict[obj_category][obj_id] = list(grasp_dict[obj_category][obj_id])
+
+    with open(cache_path, "w") as f:
+        json.dump(grasp_dict, f, indent=2)
 
     return grasp_dict
 
@@ -123,11 +141,10 @@ def create_query(object_category: str, object_id: str, candidate_grasp: str, ann
     }
     return request
 
-def submit_matching_job(args):
-    annotated_grasp_library = get_annotated_grasp_library(args.obs_dir, args.out_dir)
-    candidate_grasp_library = get_candidate_grasp_library(args.task_json, args.out_dir)
+def submit_matching_job(obs_dir: str, task_json_path: str, out_dir: str, openai: OpenAI):
+    annotated_grasp_library = get_annotated_grasp_library(obs_dir, out_dir)
+    candidate_grasp_library = get_candidate_grasp_library(task_json_path, out_dir)
 
-    openai = OpenAI()
     queries = []
     for category, candidate_grasps in candidate_grasp_library.items():
         for object_id, annotated_grasps in annotated_grasp_library[category].items():
@@ -138,11 +155,11 @@ def submit_matching_job(args):
     for query in queries:
         batch_file.write((json.dumps(query) + "\n").encode("utf-8"))
     print(f"Submitting {len(queries)} queries to OpenAI, total size: {batch_file.tell():,} bytes")
-    # batch_file.seek(0)
-    # batch_file_id = openai.files.create(file=batch_file, purpose="batch").id
-    # batch = openai.batches.create(input_file_id=batch_file_id, endpoint="/v1/chat/completions", completion_window="24h")
-    # print(f"Submitted batch job with id: {batch.id}")
-    # return batch.id
+    batch_file.seek(0)
+    batch_file_id = openai.files.create(file=batch_file, purpose="batch").id
+    batch = openai.batches.create(input_file_id=batch_file_id, endpoint="/v1/chat/completions", completion_window="24h")
+    print(f"Submitted batch job with id: {batch.id}")
+    return batch.id
 
 def retrieve_matching_job(openai: OpenAI, batch_id: str):
     batch = openai.batches.retrieve(batch_id)
@@ -157,15 +174,15 @@ def main():
 
     os.makedirs(args.out_dir, exist_ok=True)
 
-    annotated_grasp_library = get_annotated_grasp_library(args.obs_dir, args.out_dir)
-    candidate_grasp_library = get_candidate_grasp_library(args.task_json, args.out_dir)
+    openai = OpenAI()
 
     if args.submit:
-        batch_id = submit_matching_job(args)
+        batch_id = submit_matching_job(args.obs_dir, args.task_json, args.out_dir, openai)
     else:
         batch_id = args.batch_id
 
-    retrieve_matching_job(args.openai, batch_id)
+    if args.retrieve:
+        retrieve_matching_job(openai, batch_id)
 
 if __name__ == "__main__":
     main()
