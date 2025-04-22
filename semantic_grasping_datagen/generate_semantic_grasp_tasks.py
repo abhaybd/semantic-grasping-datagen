@@ -1,7 +1,6 @@
+import copy
 import os.path
-from collections import defaultdict
 import json
-from operator import index
 
 from semantic_grasping_datagen.langchain_wrapper import LangchainWrapper, ChatOpenAI
 
@@ -102,374 +101,7 @@ all_categories = [
 ]
 
 
-initial_tasks_with_grasp_info = [
-    "Pour coffee from the mug (handle grasp)",
-    "Warm yourself with a hot mug (body grasp)",
-    "Check the brand on the bottom of the mug (rim grasp to flip)",
-    "Drink a hot beverage comfortably (side grasp)",
-    "Slice bread for sandwiches (knife handle grasp)",
-    "Hand a knife safely to another person (blade hold grasp)",
-    "Stabilize knife for precision cutting (knife tip and handle grasp)",
-    "Set the fork properly on the table (fork tine manipulation)",
-    "Eat (fork or spoon handle grip)",
-    "Serve soup from the pot (pot handle grasp)",
-    "Peel a banana (stem pinch grasp)",
-    "Open a shopping bag (bag opening grasp)",
-    "Carry the bag (handle loop grasp)",
-    "Open a beer bottle (bottle neck or handle grasp)",
-    "Pour beer into a glass (bottle body grasp)",
-    "Read the book (book edge pinch)",
-    "Re-shelve the book (book spine grasp)",
-    "Unscrew a bottle cap (cap twist grasp)",
-    "Pour liquid from a bottle (bottle neck grasp)",
-    "Serve cereal from a bowl (bowl rim grasp)",
-    "Mix ingredients (any food item plus a bowl)",
-    "Position camera for a photo (DSLR body grasp)",
-    "Adjust camera zoom lens (lens barrel rotation grasp)",
-    "Drip wax onto table (candle side grasp)",
-    "Open a canister lid (lid twist grasp)",
-    "Rotate can opener around can (handle rotation grasp)",
-    "Adjust cap fit on head (brim grasp and rotation)",
-    "Take a selfie (side edge grasp - cell phone)",
-    "Pour cereal from box (box side panel grasp)",
-    "Open cereal box (flap pinch and pull)",
-    "Break chocolate into pieces (chocolate edge grasp)",
-    "Stack coasters (coaster edge pinch)",
-    "Move computer mouse (mouse body grasp)",
-    "Hold gaming controller (controller side grips)",
-    "Sip water (cup body grasp)",
-    "Adjust desk lamp position (lamp neck grasp)",
-    "Squeeze drink bottle (bottle body compression)",
-    "Open sports bottle cap (cap flip grasp)",
-    "Stir drink (utensil handle grasp)",
-    "Change DSLR camera lens (lens twist)",
-    "Point flashlight at target (flashlight body grasp)",
-    "Put on glasses (glasses stem grasp)",
-    "Clean glasses lenses (glasses frame edge grasp)",
-    "Tune the guitar (tuning peg rotation grasp)",
-    "Strum the guitar (pick grasp or finger positioning)",
-    "Use hammer with maximum leverage (hammer handle grasp - near base)",
-    "Tap very gently on the table with the hammer  (hammer handle grasp - near head)",
-    "Hang clothing on a hanger (hanger hook grasp)",
-    "Put on hat (brim manipulation)",
-    "Hang up headphones (headband grasp)",
-    "Cut paper (scissors handle grasp)",
-    "Spread jam with a knife (knife flat blade grasp)",
-    "Open laptop lid (lid edge grasp)",
-    "Write with marker on whiteboard (marker body grasp)",
-    "Pour milk (carton side or handle grasp)",
-    "Open milk (spout manipulation)",
-    "Flip notepad to clean page (notepad edge grasp)",
-    "Toss pancakes in a pan (pan handle grasp with wrist motion)",
-    "Open box (box flap grasp)",
-    "Bind pages with paperclip (paperclip pinch and slide)",
-    "Write signature (pen body grasp)",
-    "Open pill bottle (cap press and turn)",
-    "Bring plate to the dining table (plate rim grasp)",
-    "Open purse (purse clasp manipulation)",
-    "Tune radio (knob rotation grasp)",
-    "Put ring on finger (ring exterior grasp)",
-    "Polish ring (ring secure grasp)",
-    "Measure length with ruler (ruler alignment grasp)",
-    "Cut fabric with scissors (scissors handle grasp)",
-    "Tighten screw with screwdriver (screwdriver handle grip with rotation)",
-    "Squeeze shampoo onto palm (bottle compression grasp)",
-    "Tie shoelaces (lace grasp)",
-    "Lather soap (soap surface grasp)",
-    "Pump soap (pump press with palm)",
-    "Open pull-tab on soda can (tab pinch and lift)",
-    "Pour soda into glass (can angle control grasp)",
-    "Stir hot drink with spoon (spoon handle grasp)",
-    "Silence alarm (button manipulation)",
-    "Put the laptop away (lid center grasp)",
-    "Pour tea from teapot (teapot handle grasp)",
-    "Check if the teapot needs a refill (lid knob grasp)",
-    "Insert USB stick into port (USB body grasp)",
-    "Toast with wine glass (stem secure grasp)",
-]
-
-
-def _make_category_to_tasks():
-    mapping_rules = {
-        "banana": "Banana",
-        "bag": "Bag",
-        "beer": "BeerBottle",
-        "book": "Book",
-        "bottle": "Bottle",
-        "bowl": "Bowl",
-        "bread": "BreadSlice",
-        "camera": "DSLRCamera",
-        "candle": "Candle",
-        "canister": "Canister",
-        "can opener": "CanOpener",
-        "cap": "Cap",
-        "cell phone": "CellPhone",
-        "cereal box": "CerealBox",
-        "chocolate": "Chocolate",
-        "coaster": "Coaster",
-        "mouse": "ComputerMouse",
-        "controller": "Controller",
-        "cup": "Cup",
-        "desk lamp": "DeskLamp",
-        "drink bottle": "DrinkBottle",
-        "dslr": "DSLRCamera",
-        "flashlight": "Flashlight",
-        "fork": "Fork",
-        "glasses": "Glasses",
-        "guitar": "Guitar",
-        "hammer": "Hammer",
-        "hanger": "Hanger",
-        "hat": "Hat",
-        "headphones": "Headphones",
-        "knife": "Knife",
-        "laptop": "Laptop",
-        "marker": "Marker",
-        "milk": "MilkCarton",
-        "mug": "Mug",
-        "notepad": "Notepad",
-        "pan": "Pan",
-        "box": "PaperBox",
-        "paperclip": "PaperClip",
-        "pen": "Pen",
-        "pill": "PillBottle",
-        "plate": "Plate",
-        "purse": "Purse",
-        "radio": "Radio",
-        "ring": "Ring",
-        "ruler": "Ruler",
-        "scissors": "Scissors",
-        "screwdriver": "ScrewDriver",
-        "shampoo": "Shampoo",
-        "soap": "SoapBottle",
-        "soda can": "SodaCan",
-        "spoon": "Spoon",
-        "teapot": "Teapot",
-        "usb": "USBStick",
-        "wine glass": "WineGlass",
-    }
-
-    # Create mapping from object to tasks
-    object_to_tasks = defaultdict(list)
-    for task in initial_tasks_with_grasp_info:
-        matched = False
-        lower_task = task.lower()
-        for keyword, obj_type in mapping_rules.items():
-            if keyword.lower() in lower_task:
-                object_to_tasks[obj_type].append(task)
-                matched = True
-        if not matched:
-            object_to_tasks["Unknown"].append(task)
-
-    return dict(object_to_tasks)
-
-
-category_to_tasks = {
-    "Mug": [
-        "Pour coffee from the mug (handle grasp)",
-        "Warm yourself with a hot mug (body grasp)",
-        "Check the brand on the bottom of the mug (rim grasp to flip)",
-        "Drink a hot beverage comfortably (side grasp)",
-    ],
-    "Unknown": [
-        "Serve soup from the pot (pot handle grasp)",
-        "Stir drink (utensil handle grasp)",
-        "Tie shoelaces (lace grasp)",
-        "Silence alarm (button manipulation)",
-    ],
-    "Knife": [
-        "Slice bread for sandwiches (knife handle grasp)",
-        "Hand a knife safely to another person (blade hold grasp)",
-        "Stabilize knife for precision cutting (knife tip and handle grasp)",
-        "Spread jam with a knife (knife flat blade grasp)",
-    ],
-    "Fork": [
-        "Set the fork properly on the table (fork tine manipulation)",
-        "Eat (fork or spoon handle grip)",
-    ],
-    "Spoon": [
-        "Eat (fork or spoon handle grip)",
-        "Stir hot drink with spoon (spoon handle grasp)",
-    ],
-    "Banana": [
-        "Peel a banana (stem pinch grasp)",
-    ],
-    "Bag": [
-        "Open a shopping bag (bag opening grasp)",
-        "Carry the bag (handle loop grasp)",
-    ],
-    "Pen": [
-        "Write signature (pen body grasp)",
-    ],
-    "BeerBottle": [
-        "Open a beer bottle (bottle neck or handle grasp)",
-        "Pour beer into a glass (bottle body grasp)",
-    ],
-    "Bottle": [
-        "Unscrew a bottle cap (cap twist grasp)",
-        "Pour liquid from a bottle (bottle neck grasp)",
-        "Squeeze drink bottle (bottle body compression)",
-        "Open sports bottle cap (cap flip grasp)",
-        "Open pill bottle (cap press and turn)",
-        "Squeeze shampoo onto palm (bottle compression grasp)",
-    ],
-    "Book": [
-        "Read the book (book edge pinch)",
-        "Re-shelve the book (book spine grasp)",
-    ],
-    "Cap": [
-        "Unscrew a bottle cap (cap twist grasp)",
-        "Adjust cap fit on head (brim grasp and rotation)",
-        "Open sports bottle cap (cap flip grasp)",
-    ],
-    "Bowl": [
-        "Serve cereal from a bowl (bowl rim grasp)",
-        "Mix ingredients (any food item plus a bowl)",
-    ],
-    "DSLRCamera": [
-        "Position camera for a photo (DSLR body grasp)",
-        "Position camera for a photo (DSLR body grasp)",
-        "Adjust camera zoom lens (lens barrel rotation grasp)",
-        "Change DSLR camera lens (lens twist)",
-        "Change DSLR camera lens (lens twist)",
-    ],
-    "Candle": [
-        "Drip wax onto table (candle side grasp)",
-    ],
-    "Canister": [
-        "Open a canister lid (lid twist grasp)",
-    ],
-    "CanOpener": [
-        "Rotate can opener around can (handle rotation grasp)",
-    ],
-    "CellPhone": [
-        "Take a selfie (side edge grasp - cell phone)",
-    ],
-    "Pan": [
-        "Toss pancakes in a pan (pan handle grasp with wrist motion)",
-    ],
-    "PaperBox": [
-        "Open box (box flap grasp)",
-    ],
-    "CerealBox": [
-        "Pour cereal from box (box side panel grasp)",
-        "Open cereal box (flap pinch and pull)",
-    ],
-    "Chocolate": [
-        "Break chocolate into pieces (chocolate edge grasp)",
-    ],
-    "Coaster": [
-        "Stack coasters (coaster edge pinch)",
-    ],
-    "ComputerMouse": [
-        "Move computer mouse (mouse body grasp)",
-    ],
-    "Controller": [
-        "Hold gaming controller (controller side grips)",
-    ],
-    "Cup": [
-        "Sip water (cup body grasp)",
-    ],
-    "DeskLamp": [
-        "Adjust desk lamp position (lamp neck grasp)",
-    ],
-    "DrinkBottle": [
-        "Squeeze drink bottle (bottle body compression)",
-    ],
-    "Flashlight": [
-        "Point flashlight at target (flashlight body grasp)",
-    ],
-    "Glasses": [
-        "Put on glasses (glasses stem grasp)",
-        "Clean glasses lenses (glasses frame edge grasp)",
-    ],
-    "Guitar": [
-        "Tune the guitar (tuning peg rotation grasp)",
-        "Strum the guitar (pick grasp or finger positioning)",
-    ],
-    "Hammer": [
-        "Use hammer with maximum leverage (hammer handle grasp - near base)",
-        "Tap very gently on the table with the hammer  (hammer handle grasp - near head)",
-    ],
-    "Hanger": [
-        "Hang clothing on a hanger (hanger hook grasp)",
-    ],
-    "Hat": [
-        "Put on hat (brim manipulation)",
-    ],
-    "Headphones": [
-        "Hang up headphones (headband grasp)",
-    ],
-    "Scissors": [
-        "Cut paper (scissors handle grasp)",
-        "Cut fabric with scissors (scissors handle grasp)",
-    ],
-    "Laptop": [
-        "Open laptop lid (lid edge grasp)",
-        "Put the laptop away (lid center grasp)",
-    ],
-    "Marker": [
-        "Write with marker on whiteboard (marker body grasp)",
-    ],
-    "MilkCarton": [
-        "Pour milk (carton side or handle grasp)",
-        "Open milk (spout manipulation)",
-    ],
-    "Notepad": [
-        "Flip notepad to clean page (notepad edge grasp)",
-    ],
-    "PaperClip": [
-        "Bind pages with paperclip (paperclip pinch and slide)",
-    ],
-    "PillBottle": [
-        "Open pill bottle (cap press and turn)",
-    ],
-    "Plate": [
-        "Bring plate to the dining table (plate rim grasp)",
-    ],
-    "Ring": [
-        "Bring plate to the dining table (plate rim grasp)",
-        "Put ring on finger (ring exterior grasp)",
-        "Polish ring (ring secure grasp)",
-    ],
-    "Purse": [
-        "Open purse (purse clasp manipulation)",
-    ],
-    "Radio": [
-        "Tune radio (knob rotation grasp)",
-    ],
-    "Ruler": [
-        "Measure length with ruler (ruler alignment grasp)",
-    ],
-    "ScrewDriver": [
-        "Tighten screw with screwdriver (screwdriver handle grip with rotation)"
-    ],
-    "Shampoo": [
-        "Squeeze shampoo onto palm (bottle compression grasp)",
-    ],
-    "SoapBottle": [
-        "Lather soap (soap surface grasp)",
-        "Pump soap (pump press with palm)",
-    ],
-    "SodaCan": [
-        "Open pull-tab on soda can (tab pinch and lift)",
-        "Pour soda into glass (can angle control grasp)",
-    ],
-    "Teapot": [
-        "Pour tea from teapot (teapot handle grasp)",
-        "Check if the teapot needs a refill (lid knob grasp)",
-    ],
-    "USBStick": [
-        "Insert USB stick into port (USB body grasp)",
-    ],
-    "WineGlass": [
-        "Toast with wine glass (stem secure grasp)",
-    ],
-}
-
-
-def get_missing_object_types(output_file, batch_size=5, implicit=True):
-    unused_categories = set(all_categories)  # - set(category_to_tasks.keys())
-
+def generate_grasps(output_file):
     output_file = os.path.expanduser(output_file)
 
     if os.path.isfile(output_file):
@@ -478,7 +110,7 @@ def get_missing_object_types(output_file, batch_size=5, implicit=True):
     else:
         all_grasps = {}
 
-    missing_categories = sorted(list(unused_categories - set(all_grasps.keys())))
+    missing_categories = sorted(list(set(all_categories) - set(all_grasps.keys())))
 
     if len(missing_categories) == 0:
         return all_grasps
@@ -490,46 +122,86 @@ def get_missing_object_types(output_file, batch_size=5, implicit=True):
         )
     )
 
-    if implicit:
-        implicit_str = (
-            " without explicitly providing instructions about the grasp description"
-            " (like object part to contact or direction to approach)"
-        )
-    else:
-        implicit_str = ""
+    how_many = "two"
 
-    for first_category in range(0, len(missing_categories), batch_size):
-        cur_categories = missing_categories[
-            first_category : first_category + batch_size
-        ]
-        print(first_category, len(missing_categories), cur_categories)
+    example = {
+        "object_subtypes": [
+            "Cordless drill",
+            "Pneumatic drill",
+            "Hammer drill",
+            "Handheld electric drill",
+        ],
+        "optional_parts": ["Auxiliary handle", "Battery pack", "Belt clip", "Power cable"],
+        "common_parts": ["Handle", "Motor body", "Chuck", "Trigger"],
+        "object_table_contact_parts": ["Handle", "Motor body"],
+        "common_graspable_parts": ["Handle", "Motor body"],
+        "grasps": [
+            {
+                "object_part": "Handle",
+                "example_task": "operating the drill to make holes into a wall",
+                "approach_direction": "from the side",
+                "finger_plane": "up/down relative to the arm's axis",
+                "gripper_orientation": "sideways relative to the surface",
+                "natural_language": "Grasp around the handle from the side with the gripper oriented sideways to align with the slim, elongated shape of the handle.",
+            },
+            {
+                "object_part": "Motor body",
+                "example_task": "lifting and moving the drill to clean the table surface",
+                "approach_direction": "from above",
+                "finger_plane": "left/right relative to the arm's axis",
+                "gripper_orientation": "downward-facing toward the surface",
+                "natural_language": "Grasp around the motor body from above with the gripper facing downward to enclose the broader, bulkier section securely.",
+            },
+        ],
+    }
+
+    for itc, category in enumerate(missing_categories):
+        print(itc, len(missing_categories), category)
 
         query = (
-            "For each object type in the list below, we need to make a short list of up to 5 grasp definitions"
-            " (part of the object to grasp with a single 6-DOF end effector, and relative orientation of"
-            " the gripper with respect to the part to grasp). Try to make the grasps as varied as possible."
-            " Assuming that the objects from each category are lying on a table or other surface, avoid grasps"
-            " that assume that the object needs to be approached from underneath or placed upright while holding"
-            " it from underneath. Do not assume the presence of any optional feature in an object of the given"
-            " category. If some object is too generic to identify grasps (e.g. an undetermined food item, or an"
-            " unidentified piece of fruit), feel free to return an empty list."
-            " Then, for each of the identified grasps, generate 4 semantic grasping tasks that require that"
-            " type of grasp (and not any other from the list) to correctly hold the object towards task"
-            f" completion{implicit_str}. The task definition might require a second gripper for completion,"
-            " but the grasp should be possible with a single gripper. Generate the output as a JSON map"
-            " from object type to a list of dicts, each with a"
-            " `grasp_definition` (natural language str) and a `semantic_tasks` short list of 4 task descriptions"
-            " (each a natural language str). Do not add any additional comments. The list of object types"
-            f" is\n\n{cur_categories}"
+            f"For objects of a given category, we need to determine {how_many} grasp definitions"
+            " considering a single 6-DOF end effector that are as varied as possible (e.g., for"
+            " ladles we would probably define one grasp around the handle and another one around the bowl,"
+            " possibly requiring different relative orientations of the gripper with respect to the object part) and are"
+            " reasonable for specific tasks/contexts (think about different grasps when using, cleaning, or handing a knife)."
+            " Assuming that the objects from each category are standing or lying on a table or similar surface, avoid grasps"
+            " that assume that the object needs to be approached from underneath or example tasks that require the"
+            " object to be placed upright while holding it from underneath for the target object pose on some"
+            " surface. Do not assume"
+            " the presence of any optional feature in an object of the given category (e.g. some chair subtypes might"
+            " have legs, but others a wheeled base instead, while all chairs have a back rest and a seat)."
+            " Related, if the object category is too generic to identify object parts (e.g. an undetermined `tool`),"
+            " feel free to return an empty list. Generate the output as a JSON dict with:\n"
+            " - `object_subtypes` (list of str, possibly empty) different types of object for the given category (which might include specific optional parts),\n"
+            " - `optional_parts` (list of str, possibly empty) present in only some objects of the category and subtypes and should be avoided\n"
+            " - `common_parts` (list of str, possibly empty) reasonably comprehensive list of parts of any object of the given category (no optional ones). Here you can merge parts that might be differently names in subclasses but offer a common affordance for any object of the category or subtype(s)\n"
+            " - `object_table_contact_parts` (list of str) part(s) of object that are assumed to be in contact with the table or surface underneath in the default starting pose (this defines a starting object orientation). If more than one part, make sure these are plausibly simultaneously in contact with the underlying surface,\n"
+            " - `common_graspable_parts` (list of str, possibly empty) that can be used to generate grasps for any object of the category\n"
+            f" - `grasps`, a list of {how_many} dicts with the entries:\n"
+            f"   - an `object_part` (str),\n"
+            f"   - an `example_task`(str),\n"
+            f"   - an `approach_direction` (str, for wrist axis, e.g. from above, from the side, from below, at an angle, if relevant, else `Any`, relative to the orientation implied by the object-table contact parts),\n"
+            f"   - a `finger_plane` (str, relative to wrist axis, e.g. left/right or up/down relative to the arm's axis, if relevant, else `Any`),\n"
+            f"   - a `gripper_orientation` (str, whether the gripper faces up, down, sideways, or is diagonal/angled tilted, if relevant, else `Any`),\n"
+            f"   - and a `natural_language` (str, description of the grasp in natural language, avoiding any reference to the example task and avoiding irrelevant grasp parameters, if any)\n"
+            f"\nMake sure that example tasks do not state the object part to contact or the direction to approach,"
+            f" and are unfeasible for the alternative grasp(s) in the list. If these requirements seem impossible to fulfill,"
+            f" it is best to return an empty list of grasps. Be very descriptive about the relative gripper orientations.\n"
+            f" One example for the `drill` category would be:\n\n{json.dumps(example, indent=2)}\n"
+            f"Feel free to discuss options to annotate the object type while fulfilling the requirements before"
+            f" generating the JSON dict. The object type to annotate is {category}."
         )
 
         ans = llm(query, log="grasps")
 
-        grasps = llm.extract_json(ans)
-        if grasps is None:
+        grasp_info = llm.extract_json(ans)
+        if grasp_info is None:
+            print(f"Failed to parse LLM response for category '{category}'")
             continue
 
-        all_grasps.update(grasps)
+        all_grasps[category] = grasp_info
+
+        print(json.dumps(grasp_info["grasps"], indent=2))
 
         with open(output_file, "w") as f:
             json.dump(all_grasps, f, indent=2)
@@ -539,21 +211,21 @@ def get_missing_object_types(output_file, batch_size=5, implicit=True):
     return all_grasps
 
 
-def get_sparser_grasps(all_grasps, output_file):
+def semantic_tasks_from_grasps(all_grasp_infos, output_file):
     output_file = os.path.expanduser(output_file)
 
     if os.path.isfile(output_file):
         with open(output_file) as f:
-            sparse_grasps = json.load(f)
+            semantic_tasks = json.load(f)
     else:
-        sparse_grasps = {}
+        semantic_tasks = {}
 
     remaining_categories = sorted(
-        list(set(all_grasps.keys()) - set(sparse_grasps.keys()))
+        list(set(all_categories) - set(semantic_tasks.keys()))
     )
 
     if len(remaining_categories) == 0:
-        return sparse_grasps
+        return semantic_tasks
 
     llm = LangchainWrapper(
         ChatOpenAI(
@@ -563,248 +235,94 @@ def get_sparser_grasps(all_grasps, output_file):
     )
 
     for it, category in enumerate(remaining_categories):
-        original_grasps = all_grasps.get(category, [])
-        if not original_grasps:
-            print(f"No grasps defined for {category}")
-            sparse_grasps[category] = []
-            continue
-
-        print(it, len(remaining_categories), category)
-
-        grasp_list_str = "\n".join(
-            [f"- {g['grasp_definition']}" for g in original_grasps]
-        )
-
-        query = (
-            f"Given the grips of a {category} defined by:\n\n"
-            f"{grasp_list_str}\n\n"
-            "If some grasp seems not generally applicable"
-            " to an object of the given category as it perhaps assumes the presence of an optional feature in the"
-            " object, we should discard that type of grasp. Assuming that the objects from each category are lying"
-            " on a table or other surface, we should also discard grasps that assume that the object needs to be"
-            " approached from underneath or placed upright while holding it from underneath."
-            " Feel free to briefly discuss before your decision, and then"
-            " list the up to two (2) generally applicable grasps that have least resemblance among them"
-            " as a JSON parsable list of strings. Consider resemblance a function of the part of the object to grasp"
-            " and the relative direction to approach."
-        )
-
-        ans = llm(query, log="sparser_grasps")
-
-        sparse_set = llm.extract_json(ans)
-        if sparse_set is None:
-            continue
-
-        sparse_grasps[category] = sparse_set
-
-        with open(output_file, "w") as f:
-            json.dump(sparse_grasps, f, indent=2)
-
-    with open(output_file, "w") as f:
-        json.dump(sparse_grasps, f, indent=2)
-
-    llm.print_costs()
-
-    return sparse_grasps
-
-
-def filter_with_semantic_task_coverage(all_grasps, sparse_grasps, output_file):
-    output_file = os.path.expanduser(output_file)
-
-    if os.path.isfile(output_file):
-        with open(output_file) as f:
-            coverage_results = json.load(f)
-    else:
-        coverage_results = {}
-
-    remaining_categories = sorted(
-        list(set(sparse_grasps.keys()) - set(coverage_results.keys()))
-    )
-
-    if len(remaining_categories) == 0:
-        return coverage_results
-
-    llm = LangchainWrapper(
-        ChatOpenAI(
-            model=MODEL_NAME,
-            max_tokens=4096,
-        )
-    )
-
-    for it, category in enumerate(remaining_categories):
-        print(it, len(remaining_categories), category)
-
-        if not all_grasps[category]:
-            coverage_results[category] = {}
-            print(f"No grasps for {category}")
-            continue
-
-        sparse_set = sparse_grasps.get(category, [])
-        all_grasps_in_cat = all_grasps.get(category, [])
-
-        if len(sparse_set) < 2:
-            coverage_results[category] = {}
-            print(f"Only {len(sparse_set)} grasps for {category}")
-            continue
-
-        semantic_tasks = []
-        full_set = []
-        for g in all_grasps_in_cat:
-            full_set.append(g["grasp_definition"])
-            semantic_tasks.extend(g.get("semantic_tasks", []))
-
-        semantic_tasks_text = "\n".join(f" - {t}" for t in semantic_tasks)
-
-        index_to_grasp = {it: grasp for it, grasp in enumerate(sparse_set)}
-        # index_to_grasp = {it: grasp for it, grasp in enumerate(full_set)}
-        grasp_str = "\n".join(
-            f" {it} {index_to_grasp[it]}" for it in range(len(index_to_grasp))
-        )
-
-        query = (
-            f"For an object of category '{category}' with the following possible grasps:\n\n"
-            f"{grasp_str}\n\n"
-            "that are identified by their numerical indices,"
-            f" which of the following semantic tasks seem solvable by each grasp?\n\n"
-            f"{semantic_tasks_text}\n\n"
-            "Discard semantic tasks that assume the presence of features only optionally found in objects of this"
-            " category. You may briefly discuss any ambiguities or decisions, and finally add a JSON parsable"
-            " dict from each kept semantic task to the corresponding list of valid grasp indices."
-            " If no grasp seems reasonable for a semantic task, it is fine to return an empty list for that semantic"
-            " task."
-        )
-
-        ans = llm(query, log="semantic_task_coverage")
-        coverage_dict = llm.extract_json(ans)
-
-        if coverage_dict is None:
-            continue
-
-        current_valid_grasps = {}
-
-        num_valid_tasks = 0
-        num_valid_in_discarded_grasps = 0
-
-        for semantic_task, valid_grasps in coverage_dict.items():
-            if len(valid_grasps) != 1:
-                continue
-
-            grasp = index_to_grasp[valid_grasps[0]]
-            if grasp not in sparse_set:
-                num_valid_in_discarded_grasps += 1
-
-            num_valid_tasks += 1
-
-            if grasp in current_valid_grasps:
-                current_valid_grasps[grasp].append(semantic_task)
-            else:
-                current_valid_grasps[grasp] = [semantic_task]
-
-        if len(current_valid_grasps) < 2:
-            # Avoid bias later by ensuring both grasp types are represented
-            print(f"Only {len(current_valid_grasps)} grasps for {category}. Consider skipping?")
-
-        for grasp in index_to_grasp.values():
-            if grasp not in current_valid_grasps:
-                current_valid_grasps[grasp] = []
-
-        coverage_results[category] = current_valid_grasps
-
-        print(
-            category,
-            num_valid_tasks,
-            "accepted",
-            num_valid_in_discarded_grasps,
-            "in discarded grasps",
-        )
-
-        with open(output_file, "w") as f:
-            json.dump(coverage_results, f, indent=2)
-
-    with open(output_file, "w") as f:
-        json.dump(coverage_results, f, indent=2)
-
-    llm.print_costs()
-    return coverage_results
-
-
-def refine_semantic_tasks(all_tasks, output_file):
-    output_file = os.path.expanduser(output_file)
-
-    if os.path.isfile(output_file):
-        with open(output_file) as f:
-            refined_tasks = json.load(f)
-    else:
-        refined_tasks = {}
-
-    remaining_categories = sorted(
-        list(set(all_tasks.keys()) - set(refined_tasks.keys()))
-    )
-
-    if len(remaining_categories) == 0:
-        return refined_tasks
-
-    llm = LangchainWrapper(
-        ChatOpenAI(
-            model=MODEL_NAME,
-            max_tokens=4096,
-        )
-    )
-
-    for it, category in enumerate(remaining_categories):
-        category_data = all_tasks.get(category, {})
-        if not category_data:
-            print(f"No data for {category}")
-            refined_tasks[category] = {}
+        grasp_infos = all_grasp_infos[category]["grasps"]
+        object_contacts = all_grasp_infos[category]["object_table_contact_parts"]
+        if not grasp_infos:
+            print(f"No grasp data for {category}")
+            semantic_tasks[category] = {}
             continue
 
         print(it, len(remaining_categories), category)
 
         prompt = (
-            f"The following are semantic tasks associated with grasps for the object category '{category}':\n\n"
-        )
-
-        for grasp_name, tasks in category_data.items():
-            if len(tasks) == 0:
-                task_list_str += "N/A"
-            else:
-                task_list_str = "\n".join([f"  - {t}" for t in tasks])
-            prompt += f"Grasp: {grasp_name}\n{task_list_str}\n\n"
-
-        prompt += (
-            "Note that some grasps do not have any valid semantic tasks. The task definition might require a second gripper for completion,"
-            " but the grasp should be possible with a single gripper."
+            f" We need to generate semantic manipulation tasks requiring each of the given grasps in the list below. The task definition might"
+            f" require a second gripper for completion, as long as the grasp is feasible with a single gripper."
             " Please process the tasks for each grasp in the following way:\n"
             "1. Ensure that every task clearly mentions the object type (e.g., 'the mug') unless it should be obvious.\n"
-            "2. Remove tasks that make assumptions about the state or the surroundings/context of the object (e.g. assuming the presence of any other objects, of the same category or not, in the scene).\n"
-            "3. Remove or rephrase tasks that include reference to the part of the object being grasped (e.g., 'by the handle').\n"
-            "4. If needed, rewrite tasks in clear, natural language—avoid technical formatting like snake_case.\n\n"
-            "5. Ensure each grasp has at least two semantic tasks, and that the tasks are incompatible with the alternative grasps in each category"
-            "(they should imply different use-cases or affordances).\n"
-            "For each semantic task, generate a JSON dict with the entries:\n"
+            "2. Avoid tasks that make assumptions about the state or the surroundings/context of the object (e.g. assuming the presence of any other objects of the same category or others in the scene, or the object being open/closed or empty/full, among others).\n"
+            "3. Avoid references to the part of the object being grasped (e.g., 'by the handle') or any the grasp definition parameters.\n"
+            "4. While you should focus on single-gripper task definitions, if a second gripper is implied by the task definition, it should not be assumed to be present for the initial grasp, but rather during a subsequent step (e.g. if 'while another gripper does' seems reasonable, convert it into 'for another gripper to do').\n"
+            "5. Avoid tasks that require the object to be placed upright while holding it from underneath for a task goal object pose on some surface, or other physically implausible configurations.\n"
+            "6. Write tasks in compact and intelligible natural language and avoid technical formating like snake case.\n"
+            "7. If possible, avoid simple pick and place tasks, and try to focus on semantic tasks, i.e., they should rely on some affordance of the object in the implicit task goal or consider some compositional task where we manipulate the object towards some meaningful goal.\n"
+            "8. Try to generate three or more semantic tasks per grasp, making sure that the tasks are incompatible with the alternative grasps in each category"
+            " (they should imply different use-cases or affordances).\n"
+            "9. If both provided grasps seem too similar, feel free to provide an empty list of tasks for each.\n"
+            "For each generated semantic task we need a dict with the entries:\n"
             " - `text`: the semantic task text, without mentioning the grasped part or approach direction, and mentioning the target object if needed,\n"
-            " - `grasp_score`: score in range 0 (low) to 9 (high) according to the validity of the assigned grasp,\n"
-            " - `grasp_score_critic`: short string justifying the subtracted points in the score (taking into account both grasps in the category, validity criteria, etc.)\n"
-            " - `alternative_grasp_score`: score in range 0 to 9 according to the validity of the alternative grasp,\n"
-            " - `alternative_grasp_score_critic`: short string justifying the score being higher than 0 (taking into account both grasps in the category, validity criteria, etc.),\n"
-            " - `task_criteria_fulfilled`: score the fulfilment of points 1 to 4 in the range 0 to 9 (best fulfillment)\n"
-            " add a JSON dictionary mapping each grasp name to a list of at least two semantic task JSON dicts. Do not add any additional reasoning."
+            " - `num_grippers`: the number of grippers required to complete the semantic task\n"
+            " - `grasp_critique`: short string justifying the lack of validity of the assigned grasp\n"
+            " - `grasp_score`: score in range 0 (low) to 5 (high) according to the validity of the assigned grasp,\n"
+            " - `alternative_grasp_critique`: short string justifying the possible validity of the alternative grasp,\n"
+            " - `alternative_grasp_score`: score in range 0 to 5 according to the validity of the alternative grasp,\n"
+            " - `task_criteria_fulfilled`: score the fulfillment of points 1 to 7 in the range 0 (worst) to 5 (best fulfillment)\n"
+            "For all scores and critiques you should take into account both grasps in the category and validity criteria (points 1 to 7)."
+            " Feel free to reason about the problem and generate a JSON dictionary mapping each grasp id to a list of three or more semantic task dicts."
         )
 
-        response = llm(prompt, log="refined_semantic_tasks")
+        prompt += (
+            f"\n\nThe following are the valid grasp ids and corresponding info for an object of type '{category}'"
+            f" assuming the object is in contact with the underlying surface through its part(s) {object_contacts}:\n"
+        )
+
+        id_to_grasp = {}
+        for grasp_info in grasp_infos:
+            to_keep = {
+                "object_part",
+                "approach_direction",
+                "finger_plane",
+                "gripper_orientation",
+                "natural_language",
+            }
+
+            new_info = copy.deepcopy(grasp_info)
+            for key in set(new_info.keys()) | to_keep:
+                if key not in to_keep:
+                    new_info.pop(key)
+                else:
+                    assert key in new_info
+
+            object_part = new_info["object_part"].lower().strip()
+            approach_direction = new_info["approach_direction"].lower().strip()
+            id = f"{object_part} {approach_direction}"
+            if id in id_to_grasp:
+                id += " 2"
+
+            id_to_grasp[id] = new_info
+
+        prompt += f"{json.dumps(id_to_grasp, indent=2)}\n"
+
+        response = llm(prompt, log="semantic_tasks_from_grasps")
         parsed = llm.extract_json(response)
         if parsed is None:
             print(f"Failed to parse LLM response for category '{category}'")
             continue
 
-        refined_tasks[category] = parsed
+        to_save = {}
+        for id in parsed:
+            to_save[id] = {"info": id_to_grasp[id], "tasks": parsed[id]}
+
+        print(json.dumps(parsed, indent=2))
+
+        semantic_tasks[category] = to_save
 
         with open(output_file, "w") as f:
-            json.dump(refined_tasks, f, indent=2)
+            json.dump(semantic_tasks, f, indent=2)
 
     llm.print_costs()
 
-    return refined_tasks
+    return semantic_tasks
+
 
 def print_stats(cleaned):
     num_cats = 0
@@ -813,12 +331,13 @@ def print_stats(cleaned):
     negative_scores = 0
     score_deltas = 0
     valid_categories = set()
-    for category, grasp_to_tasks in cleaned.items():
-        if len(grasp_to_tasks) == 0:
+    for category, grasp_to_info_tasks in cleaned.items():
+        if len(grasp_to_info_tasks) == 0:
             continue
         num_cats += 1
         valid_categories.add(category)
-        for grasp, tasks in grasp_to_tasks.items():
+        for grasp, info_tasks in grasp_to_info_tasks.items():
+            tasks = info_tasks["tasks"]
             num_tasks += len(tasks)
             for task in tasks:
                 positive_scores += task["grasp_score"]
@@ -841,27 +360,11 @@ def print_stats(cleaned):
 if __name__ == "__main__":
 
     def main():
-        implicit = True
-
-        implicit_str = "_implicit" if implicit else ""
-
-        all_grasps = get_missing_object_types(
-            f"~/Desktop/semantic_grasps{implicit_str}.json", implicit=implicit
+        grasps = generate_grasps(f"~/Desktop/grasp_info.json")
+        tasks = semantic_tasks_from_grasps(
+            grasps, f"~/Desktop/semantic_tasks_from_grasps.json"
         )
-
-        sparse_grasps = get_sparser_grasps(
-            all_grasps, output_file=f"~/Desktop/sparse_grasps{implicit_str}.json"
-        )
-        coverage = filter_with_semantic_task_coverage(
-            all_grasps,
-            sparse_grasps,
-            output_file=f"~/Desktop/semantic_task_after_coverage{implicit_str}.json",
-        )
-        cleaned = refine_semantic_tasks(
-            coverage,
-            output_file=f"~/Desktop/semantic_task_cleaned_up{implicit_str}.json",
-        )
-        print_stats(cleaned)
+        print_stats(tasks)
 
     main()
     print("DONE")
