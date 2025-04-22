@@ -1,5 +1,5 @@
 gantry run --budget ai2/prior -w ai2/abhayd \
-    --weka prior-default:/data \
+    --weka prior-default:/weka/prior \
     --env-secret AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID \
     --env-secret AWS_SECRET_ACCESS_KEY=AWS_ACCESS_KEY \
     --gpus 1 \

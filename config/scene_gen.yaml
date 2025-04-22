@@ -1,10 +1,11 @@
 # Scene generation configuration parameters
 
-data_dir: /assets
-out_dir: /results/scenes
+data_dir: "???"
+out_dir: "???"
 n_proc: 16
 n_samples: 10000
 blacklist: asset_blacklist.txt
+split_file:  # null to use all data
 
 annotation_sources:
   # - type: s3

@@ -97,6 +97,12 @@ def trimesh_scene_to_pyrender(tr_scene: trimesh.Scene, bg_color=None, ambient_li
 
 class MeshLibrary(object):
     def __init__(self, data_dir: str, library: dict[str, set[str]], load_kwargs: dict | None = None):
+        """
+        Args:
+            data_dir: Path to the data directory
+            library: Dictionary of object categories to set of object IDs
+            load_kwargs: Keyword arguments for the mesh loader
+        """
         self.data_dir = data_dir
         self.library = library
         self.load_kwargs = load_kwargs or {}

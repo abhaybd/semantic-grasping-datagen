@@ -1,9 +1,8 @@
 import argparse
-from multiprocessing import Value
 import os
 import json
 import csv
-from typing import Any, TypeAlias, Optional
+from typing import Any, TypeAlias
 from io import BytesIO
 
 import h5py
@@ -143,6 +142,11 @@ def create_query(object_category: str, object_id: str, candidate_grasp: str, ann
     return request
 
 def submit_matching_job(obs_dir: str, task_json_path: str, out_dir: str, openai: OpenAI):
+    batch_id_file = os.path.join(out_dir, "matching_job_id.txt")
+    if os.path.exists(batch_id_file):
+        with open(batch_id_file, "r") as f:
+            return f.read().strip()
+
     annotated_grasp_library = get_annotated_grasp_library(obs_dir, out_dir)
     candidate_grasp_library = get_candidate_grasp_library(task_json_path, out_dir)
 
@@ -160,6 +164,8 @@ def submit_matching_job(obs_dir: str, task_json_path: str, out_dir: str, openai:
     batch_file_id = openai.files.create(file=batch_file, purpose="batch").id
     batch = openai.batches.create(input_file_id=batch_file_id, endpoint="/v1/chat/completions", completion_window="24h")
     print(f"Submitted batch job with id: {batch.id}")
+    with open(batch_id_file, "w") as f:
+        f.write(batch.id)
     return batch.id
 
 def get_matching_results(openai: OpenAI, batch_id: str):
@@ -170,6 +176,7 @@ def get_matching_results(openai: OpenAI, batch_id: str):
     batch_file_lines = batch_file.content.decode("utf-8").splitlines()
 
     matched_grasps: dict[str, dict[str, dict[str, set[str]]]] = {}  # category -> object_id -> candidate_grasp_desc -> matching_grasp_descs
+    n_success = 0
     for line in batch_file_lines:
         try:
             result = json.loads(line)
@@ -186,17 +193,23 @@ def get_matching_results(openai: OpenAI, batch_id: str):
                 matched_grasps[object_category][object_id] = {}
             assert response.candidate_grasp_desc not in matched_grasps[object_category][object_id]
             matched_grasps[object_category][object_id][response.candidate_grasp_desc] = set(response.matching_grasp_descs)
-    print(f"Filtering yield: {len(matched_grasps)}/{len(batch_file_lines)} ({len(matched_grasps) / len(batch_file_lines):.0%})")
+            n_success += 1
+    print(f"Filtering yield: {n_success}/{len(batch_file_lines)} ({n_success / len(batch_file_lines):.0%})")
     return matched_grasps
 
 def retrieve_matching_job(openai: OpenAI, batch_id: str, task_json_path: str, obs_dir: str, out_dir: str):
+    out_path = os.path.join(out_dir, "matched_tasks.csv")
+    if os.path.exists(out_path):
+        print(f"Skipping retrieval of matching job {batch_id}, already exists: {out_path}")
+        return
+
     matched_grasps = get_matching_results(openai, batch_id)
 
     with open(task_json_path, "r") as f:
         tasks_spec: TasksSpec = json.load(f)
 
     n_samples = 0
-    with open(os.path.join(out_dir, "matched_tasks.csv"), "w") as out_csv:
+    with open(out_path, "w") as out_csv:
         writer = csv.DictWriter(out_csv, ["scene_path", "scene_id", "view_id", "obs_id", "task", "original_grasp_desc", "matching_grasp_desc"])
         writer.writeheader()
 
@@ -221,20 +234,29 @@ def retrieve_matching_job(openai: OpenAI, batch_id: str, task_json_path: str, ob
 
                     object_names = list(f[view_id]["object_names"].asstr())
                     for name in object_names:
+                        if "_" not in name:
+                            continue
                         category, object_id = name.split("_", 1)
                         if (
                             category not in tasks_spec or
                             category not in matched_grasps or
-                            object_id not in matched_grasps[category]
+                            object_id not in matched_grasps[category] or
+                            category not in grasps_in_view
                         ):
                             continue
 
                         for original_grasp_desc, task_infos in tasks_spec[category].items():
                             if original_grasp_desc not in matched_grasps[category][object_id]:
                                 continue
-                            matching_grasp_desc = matched_grasps[category][object_id][original_grasp_desc]
+                            matching_grasp_descs = matched_grasps[category][object_id][original_grasp_desc]
+                            assert len(matching_grasp_descs) > 0
 
                             obs_ids_for_obj, grasp_descs_for_obj = grasps_in_view[category]
+                            matching_grasp_descs_in_view = [desc for desc in grasp_descs_for_obj if desc in matching_grasp_descs]
+                            if len(matching_grasp_descs_in_view) == 0:
+                                continue
+                            matching_grasp_desc = np.random.choice(matching_grasp_descs_in_view)
+
                             matching_obs_id = next((i for i, desc in zip(obs_ids_for_obj, grasp_descs_for_obj) if desc == matching_grasp_desc), None)
                             if matching_obs_id is None:
                                 raise ValueError(f"Matching grasp description {matching_grasp_desc} not found in {grasp_descs_for_obj}")
@@ -267,10 +289,10 @@ def main():
     if args.submit:
         batch_id = submit_matching_job(args.obs_dir, args.task_json, args.out_dir, openai)
     else:
-        batch_id = args.batch_id
+        batch_id = args.retrieve
 
     if args.retrieve:
-        retrieve_matching_job(openai, batch_id)
+        retrieve_matching_job(openai, batch_id, args.task_json, args.obs_dir, args.out_dir)
 
 if __name__ == "__main__":
     main()

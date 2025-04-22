@@ -496,7 +496,20 @@ def generate_scene(datagen_cfg: DatagenConfig, annotations: list[Annotation], ob
         })
     return data, scene
 
-def procgen_init(data_dir: str, blacklist: set[str]):
+def procgen_init(data_dir: str, blacklist_file: str | None, split_file: str | None):
+    if blacklist_file:
+        with open(blacklist_file, "r") as f:
+            blacklist = set(f.read().strip().splitlines())
+    else:
+        blacklist = set()
+
+    if split_file:
+        with open(split_file, "r") as f:
+            split: dict[str, list[str]] = json.load(f)
+        split = {k: set(v) for k, v in split.items()}
+    else:
+        split = None
+
     annotations: list[Annotation] = []
     for annot_fn in os.listdir(ANNOTATIONS_DIR):
         with open(f"{ANNOTATIONS_DIR}/{annot_fn}", "r") as f:
@@ -504,11 +517,12 @@ def procgen_init(data_dir: str, blacklist: set[str]):
 
     annotated_instances: dict[str, set[str]] = {}
     for annot in annotations:
-        if f"{annot.obj.object_category}_{annot.obj.object_id}" in blacklist:
+        obj_category, obj_id = annot.obj.object_category, annot.obj.object_id
+        if f"{obj_category}_{obj_id}" in blacklist or (split is not None and (obj_category not in split or obj_id not in split[obj_category])):
             continue
-        if annot.obj.object_category not in annotated_instances:
-            annotated_instances[annot.obj.object_category] = set()
-        annotated_instances[annot.obj.object_category].add(annot.obj.object_id)
+        if obj_category not in annotated_instances:
+            annotated_instances[obj_category] = set()
+        annotated_instances[obj_category].add(obj_id)
 
     globals()["annotations"] = annotations
     globals()["object_library"] = MeshLibrary(data_dir, annotated_instances)
@@ -566,18 +580,15 @@ def fetch_annotations(hydra_cfg: DictConfig):
 
 @hydra.main(version_base=None, config_path="../../config", config_name="scene_gen.yaml")
 def main(hydra_cfg: DictConfig):
+    if missing_keys := OmegaConf.missing_keys(hydra_cfg):
+        raise ValueError(f"Missing keys: {missing_keys}")
+
     fetch_annotations(hydra_cfg)
 
     datagen_cfg = DatagenConfig(**OmegaConf.to_container(hydra_cfg["datagen"]))
 
     out_dir = hydra_cfg["out_dir"]
     os.makedirs(out_dir, exist_ok=True)
-
-    if "blacklist" in hydra_cfg:
-        with open(hydra_cfg["blacklist"], "r") as f:
-            blacklist = set(f.read().strip().splitlines())
-    else:
-        blacklist = set()
 
     n_existing_samples = sum(1 for fn in os.listdir(out_dir) if os.path.isdir(f"{out_dir}/{fn}"))
     total_samples = hydra_cfg["n_samples"]
@@ -590,7 +601,7 @@ def main(hydra_cfg: DictConfig):
     with ProcessPoolExecutor(
         max_workers=nproc,
         initializer=procgen_init,
-        initargs=(hydra_cfg["data_dir"], blacklist)
+        initargs=(hydra_cfg["data_dir"], hydra_cfg["blacklist"], hydra_cfg["split_file"])
     ) as executor:
         with tqdm(total=total_samples, desc="Generating scenes", dynamic_ncols=True, initial=n_existing_samples) as pbar:
             futures: list[Future] = []
