@@ -368,7 +368,7 @@ def print_stats(cleaned):
     print(f"Weakest defined task criteria points (mean {np.mean(task_criteria_scores):.1f}):")
     weakest_keys = sorted(list(weakest_points.keys()), key=lambda x: len(weakest_points[x]), reverse=True)
     for weakest_key in weakest_keys:
-        print(f"{len(weakest_points[weakest_key])} {weakest_key} {np.mean(weakest_points[weakest_key]):.1f}")
+        print(f"{len(weakest_points[weakest_key])} {np.mean(weakest_points[weakest_key]):.1f} {weakest_key}")
 
 
 if __name__ == "__main__":
