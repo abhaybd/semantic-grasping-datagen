@@ -1,4 +1,5 @@
 import argparse
+from multiprocessing import Value
 import os
 import json
 import csv
@@ -29,20 +30,20 @@ def get_args():
     return parser.parse_args()
 
 SYS_PROMPT = """
-You are a linguistic and robotic expert. You are tasked with matching a candidate grasp description to one of multiple options, called annotated grasp descriptions.
+You are a linguistic and robotic expert. You are tasked with matching a candidate grasp description to one or more of multiple options, called annotated grasp descriptions.
 
 You will be given a candidate grasp description, which is a description of how a robot could grasp a specific object.
 You will also be given a list of annotated grasp descriptions, which are multiple known descriptions of how a robot could grasp the same object.
-You should choose the annotated grasp description that has the same meaning as the candidate grasp description.
+You should choose the annotated grasp descriptions that have the same meaning as the candidate grasp description.
 In this case, "meaning" means that the candidate grasp description and the annotated grasp description describe a grasp on a similar part of the object, in a similar manner.
 
 For example, if the candidate grasp description is "grasp the midpoint of the handle of the mug", and one of the annotated grasp descriptions is "grasp the handle of the mug", then you should choose that annotated grasp description.
-
-If there are no suitably matching annotated grasp descriptions, you should return None to indicate that there is no match.
+If there are multiple annotated grasp descriptions that have the same meaning as the candidate grasp description, you should return all of them.
+If there are no suitably matching annotated grasp descriptions, you should return an empty list.
 
 You should output a JSON object with the following fields:
 - candidate_grasp_desc: the candidate grasp description which you are prompted with
-- matching_grasp_desc: the annotated grasp description that matches the candidate grasp description, or None if there is no match
+- matching_grasp_descs: a list of annotated grasp descriptions that have the same meaning as the candidate grasp description
 """.strip()
 
 
@@ -109,7 +110,7 @@ def get_candidate_grasp_library(tasks_spec_path: str, out_dir: str) -> dict[str,
 
 class GraspMatch(BaseModel):
     candidate_grasp_desc: str
-    matching_grasp_desc: Optional[str]
+    matching_grasp_descs: list[str]
 
 def create_query(object_category: str, object_id: str, candidate_grasp: str, annotated_grasps: list[str]):
     user_message = f"The object is a(n) {object_category}. The candidate grasp description is: \"{candidate_grasp}\". The annotated grasp descriptions are:"
@@ -161,13 +162,100 @@ def submit_matching_job(obs_dir: str, task_json_path: str, out_dir: str, openai:
     print(f"Submitted batch job with id: {batch.id}")
     return batch.id
 
-def retrieve_matching_job(openai: OpenAI, batch_id: str):
+def get_matching_results(openai: OpenAI, batch_id: str):
     batch = openai.batches.retrieve(batch_id)
     if batch.status != "completed":
-        print(f"Batch job {batch_id} did not complete successfully!")
-        return
+        raise ValueError(f"Batch job {batch_id} did not complete successfully!")
     batch_file = openai.files.content(batch.output_file_id)
-    
+    batch_file_lines = batch_file.content.decode("utf-8").splitlines()
+
+    matched_grasps: dict[str, dict[str, dict[str, set[str]]]] = {}  # category -> object_id -> candidate_grasp_desc -> matching_grasp_descs
+    for line in batch_file_lines:
+        try:
+            result = json.loads(line)
+        except json.JSONDecodeError:
+            print(f"Malformed JSON response: {line}")
+            continue
+        custom_id: str = result["custom_id"]
+        object_category, object_id = custom_id.split("___")[0].split("_", 1)
+        response = GraspMatch.model_validate_json(result["response"]["body"]["choices"][0]["message"]["content"])
+        if response.matching_grasp_descs:
+            if object_category not in matched_grasps:
+                matched_grasps[object_category] = {}
+            if object_id not in matched_grasps[object_category]:
+                matched_grasps[object_category][object_id] = {}
+            assert response.candidate_grasp_desc not in matched_grasps[object_category][object_id]
+            matched_grasps[object_category][object_id][response.candidate_grasp_desc] = set(response.matching_grasp_descs)
+    print(f"Filtering yield: {len(matched_grasps)}/{len(batch_file_lines)} ({len(matched_grasps) / len(batch_file_lines):.0%})")
+    return matched_grasps
+
+def retrieve_matching_job(openai: OpenAI, batch_id: str, task_json_path: str, obs_dir: str, out_dir: str):
+    matched_grasps = get_matching_results(openai, batch_id)
+
+    with open(task_json_path, "r") as f:
+        tasks_spec: TasksSpec = json.load(f)
+
+    n_samples = 0
+    with open(os.path.join(out_dir, "matched_tasks.csv"), "w") as out_csv:
+        writer = csv.DictWriter(out_csv, ["scene_path", "scene_id", "view_id", "obs_id", "task", "original_grasp_desc", "matching_grasp_desc"])
+        writer.writeheader()
+
+        for scene_file in tqdm(os.listdir(obs_dir), desc="Generating samples"):
+            if not scene_file.endswith(".hdf5"):
+                continue
+
+            scene_id = scene_file[:-len(".hdf5")]
+            with h5py.File(os.path.join(obs_dir, scene_file), "r") as f:
+                for view_id in f.keys():
+                    grasps_in_view: dict[str, tuple[list[str], list[str]]] = {}  # category -> (list of obs_ids, list of grasp_descs)
+                    for obs_id in f[view_id].keys():
+                        if not obs_id.startswith("obs_"):
+                            continue
+                        annotation = yaml.safe_load(f[view_id][obs_id]["annot"][()])
+                        grasp_desc = annotation["grasp_description"]
+                        category = annotation["object_category"]
+                        if category not in grasps_in_view:
+                            grasps_in_view[category] = ([], [])
+                        grasps_in_view[category][0].append(obs_id)
+                        grasps_in_view[category][1].append(grasp_desc)
+
+                    object_names = list(f[view_id]["object_names"].asstr())
+                    for name in object_names:
+                        category, object_id = name.split("_", 1)
+                        if (
+                            category not in tasks_spec or
+                            category not in matched_grasps or
+                            object_id not in matched_grasps[category]
+                        ):
+                            continue
+
+                        for original_grasp_desc, task_infos in tasks_spec[category].items():
+                            if original_grasp_desc not in matched_grasps[category][object_id]:
+                                continue
+                            matching_grasp_desc = matched_grasps[category][object_id][original_grasp_desc]
+
+                            obs_ids_for_obj, grasp_descs_for_obj = grasps_in_view[category]
+                            matching_obs_id = next((i for i, desc in zip(obs_ids_for_obj, grasp_descs_for_obj) if desc == matching_grasp_desc), None)
+                            if matching_obs_id is None:
+                                raise ValueError(f"Matching grasp description {matching_grasp_desc} not found in {grasp_descs_for_obj}")
+
+                            # print("=" * 100)
+                            # print(f"Original: {original_grasp_desc}\nMatching: {matching_grasp_desc}")
+
+                            for task_info in task_infos:
+                                task = task_info["text"]
+                                writer.writerow({
+                                    "scene_path": scene_file,
+                                    "scene_id": scene_id,
+                                    "view_id": view_id,
+                                    "obs_id": matching_obs_id,
+                                    "task": task,
+                                    "original_grasp_desc": original_grasp_desc,
+                                    "matching_grasp_desc": matching_grasp_desc
+                                })
+                                n_samples += 1
+
+    print(f"Final dataset size: {n_samples:,}")
 
 def main():
     args = get_args()
