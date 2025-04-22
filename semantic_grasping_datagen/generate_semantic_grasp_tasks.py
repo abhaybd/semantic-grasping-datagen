@@ -237,6 +237,8 @@ def semantic_tasks_from_grasps(all_grasp_infos, output_file):
         )
     )
 
+    how_many = "four"
+
     for it, category in enumerate(remaining_categories):
         grasp_infos = all_grasp_infos[category]["grasps"]
         object_contacts = all_grasp_infos[category]["object_table_contact_parts"]
@@ -260,7 +262,7 @@ def semantic_tasks_from_grasps(all_grasp_infos, output_file):
             "7. Compact instruction. Write tasks in compact and intelligible natural language and avoid technical formating like snake case.\n"
             "8. Semantic meaning. Avoid simple pick and place tasks, and try to focus on semantic tasks, i.e., they should rely on some affordance of the object or consider some compositional task where we must manipulate the object towards some meaningful goal.\n"
             "9. Identifiability. If both provided grasps, object category or parts to grasp seem too coarse/vague/hard to identify, avoid defining any task and favor an empty list of tasks for each grasp.\n"
-            "Try to generate four valid semantic tasks per grasp, making sure that the tasks are incompatible with"
+            f"Try to generate {how_many} valid semantic tasks per grasp, making sure that the tasks are incompatible with"
             " the alternative grasp for the object category (they should imply different use cases or affordances)."
             " For each generated semantic task we need a dict with the entries:\n"
             " - `text`: the semantic task instruction, without mentioning the grasped part or approach direction, and mentioning the target object if needed,\n"
@@ -271,8 +273,8 @@ def semantic_tasks_from_grasps(all_grasp_infos, output_file):
             " - `alternative_grasp_score`: validity score in range 0 to 9 according based on the alternative_grasp_critique,\n"
             " - `weakest_point`: short name (string) of the task design criterion point most poorly fulfilled,\n"
             " - `task_criteria_fulfilled`: score the fulfillment of the weakest point in the range 0 (poor) to 9 (perfect fulfillment)\n"
-            "Feel free to reason about the problem and generate a JSON dictionary mapping each grasp"
-            " id to the list of semantic task dicts."
+            "Feel free to reason about the problem and generate a JSON dictionary mapping each grasp id"
+            " to the list of semantic task dicts."
         )
 
         prompt += (
