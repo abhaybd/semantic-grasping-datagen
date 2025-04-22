@@ -42,6 +42,6 @@ datagen:
 
   # Lighting parameters
   color_temp_range: [2000.0, 10000.0]  # kelvin
-  light_intensity_range: [10.0, 30.0]
+  light_intensity_range: [10.0, 25.0]
   light_azimuth_range: [0.0, 6.283185307179586]  # radians, 0 to 2pi
   light_inclination_range: [0.0, 1.0471975511965976]  # radians, 0 to pi/3

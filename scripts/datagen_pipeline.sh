@@ -19,7 +19,7 @@ python semantic_grasping_datagen/datagen/datagen.py \
     n_samples=10000 \
     "annotation_sources=[{type:directory,params:{dir:${ANNOTS_PATH}}}]"
 python semantic_grasping_datagen/datagen/generate_obs.py scene_dir=${DATASET_PATH}/scenes out_dir=${DATASET_PATH}/observations
-python semantic_grasping_datagen/datagen/collate_data.py ${DATASET_PATH}/observations ${DATASET_PATH} --annot-type full
+# python semantic_grasping_datagen/datagen/collate_data.py ${DATASET_PATH}/observations ${DATASET_PATH} --annot-type full
 python semantic_grasping_datagen/datagen/match_tasks_to_grasps_v2.py \
     ${TASKS_JSON} \
     ${DATASET_PATH}/observations \
