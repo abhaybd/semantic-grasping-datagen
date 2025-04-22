@@ -316,8 +316,8 @@ def semantic_tasks_from_grasps(all_grasp_infos, output_file):
             continue
 
         to_save = {}
-        for id in parsed:
-            to_save[id] = {"info": id_to_grasp[id], "tasks": parsed[id]}
+        for id, tasks in parsed.items():
+            to_save[id] = {"info": id_to_grasp[id], "tasks": tasks}
 
         print(json.dumps(parsed, indent=2))
 
