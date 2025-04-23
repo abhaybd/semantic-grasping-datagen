@@ -5,7 +5,7 @@ set -euxo pipefail
 DATASET_PATH=/weka/prior/abhayd/semantic-grasping-datasets/0422_1646
 ASSETS_PATH=/weka/prior/abhayd/semantic-grasping-datasets/acronym_processed
 ANNOTS_PATH=/weka/prior/abhayd/semantic-grasping-datasets/synthetic_annotations_filtered_0417_2015
-TASKS_JSON=/weka/prior/abhayd/semantic-grasping-datasets/semantic_task_cleaned_up_implicit.json
+TASKS_JSON=/weka/prior/abhayd/semantic-grasping-datasets/generated_tasks/0422_1700.json
 FORMAT=molmo
 
 python semantic_grasping_datagen/datagen/split_data.py \

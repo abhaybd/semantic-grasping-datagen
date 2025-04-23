@@ -4,6 +4,7 @@ import json
 import csv
 from typing import Any, TypeAlias
 from io import BytesIO
+import time
 
 import h5py
 import numpy as np
@@ -16,7 +17,7 @@ from openai.lib._pydantic import to_strict_json_schema
 
 from semantic_grasping_datagen.utils import tqdm
 
-TasksSpec: TypeAlias = dict[str, dict[str, list[dict[str, Any]]]]
+TasksSpec: TypeAlias = dict[str, dict[str, dict[str, Any]]]
 
 
 def get_args():
@@ -25,7 +26,7 @@ def get_args():
     parser.add_argument("obs_dir")
     parser.add_argument("out_dir")
     parser.add_argument("--submit", action="store_true")
-    parser.add_argument("--retrieve", nargs="?", help="Retrieve a batch job with the given id")
+    parser.add_argument("--retrieve", nargs="?", help="Retrieve a batch job with the given id", const="")
     return parser.parse_args()
 
 SYS_PROMPT = """
@@ -100,7 +101,9 @@ def get_candidate_grasp_library(tasks_spec_path: str, out_dir: str) -> dict[str,
 
     grasp_dict: dict[str, list[str]] = {}
     for category in tasks_spec.keys():
-        grasp_dict[category] = list(tasks_spec[category].keys())
+        grasp_dict[category] = []
+        for grasp in tasks_spec[category]:
+            grasp_dict[category].append(tasks_spec[category][grasp]["info"]["natural_language"])
 
     with open(cache_path, "wb") as f:
         pickle.dump(grasp_dict, f)
@@ -169,9 +172,12 @@ def submit_matching_job(obs_dir: str, task_json_path: str, out_dir: str, openai:
     return batch.id
 
 def get_matching_results(openai: OpenAI, batch_id: str):
-    batch = openai.batches.retrieve(batch_id)
+    done_statuses = ["completed", "expired", "cancelled", "failed"]
+    print("Waiting for batch job to complete...")
+    while (batch := openai.batches.retrieve(batch_id)).status not in done_statuses:
+        time.sleep(10)
     if batch.status != "completed":
-        raise ValueError(f"Batch job {batch_id} did not complete successfully!")
+        raise ValueError(f"Batch job {batch_id} did not complete successfully! Status: {batch.status}")
     batch_file = openai.files.content(batch.output_file_id)
     batch_file_lines = batch_file.content.decode("utf-8").splitlines()
 
@@ -245,7 +251,9 @@ def retrieve_matching_job(openai: OpenAI, batch_id: str, task_json_path: str, ob
                         ):
                             continue
 
-                        for original_grasp_desc, task_infos in tasks_spec[category].items():
+                        for grasp_info in tasks_spec[category].values():
+                            original_grasp_desc: str = grasp_info["info"]["natural_language"]
+                            task_infos = grasp_info["tasks"]
                             if original_grasp_desc not in matched_grasps[category][object_id]:
                                 continue
                             matching_grasp_descs = matched_grasps[category][object_id][original_grasp_desc]
@@ -291,7 +299,8 @@ def main():
     else:
         batch_id = args.retrieve
 
-    if args.retrieve:
+    if args.retrieve is not None:
+        assert batch_id, "No batch id provided!"
         retrieve_matching_job(openai, batch_id, args.task_json, args.obs_dir, args.out_dir)
 
 if __name__ == "__main__":
