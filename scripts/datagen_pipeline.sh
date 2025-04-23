@@ -37,9 +37,16 @@ echo "Packaging train data"
 python semantic_grasping_datagen/datagen/package_pointing_data.py \
     ${DATASET_PATH}/task_point_v2/matched_tasks.csv \
     ${DATASET_PATH}/observations \
-    ${DATASET_PATH}/${FORMAT}_data \
+    ${DATASET_PATH}/${FORMAT}_data_cot \
     --format ${FORMAT} \
     --cot \
+    --n-proc 32
+
+python semantic_grasping_datagen/datagen/package_pointing_data.py \
+    ${DATASET_PATH}/task_point_v2/matched_tasks.csv \
+    ${DATASET_PATH}/observations \
+    ${DATASET_PATH}/${FORMAT}_data \
+    --format ${FORMAT} \
     --n-proc 32
 
 # Test datagen
@@ -48,7 +55,7 @@ python semantic_grasping_datagen/datagen/datagen.py \
     out_dir=${DATASET_PATH}/scenes_test \
     data_dir=${ASSETS_PATH} \
     split_file=${DATASET_PATH}/splits/test.json \
-    n_samples=10000 \
+    n_samples=1000 \
     "annotation_sources=[{type:directory,params:{dir:${ANNOTS_PATH}}}]"
 
 echo "Generating test observations"

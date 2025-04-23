@@ -2,7 +2,7 @@
 
 data_dir: "???"
 out_dir: "???"
-n_proc: 16
+n_proc: 32
 n_samples: 10000
 blacklist: asset_blacklist.txt
 split_file:  # null to use all data
