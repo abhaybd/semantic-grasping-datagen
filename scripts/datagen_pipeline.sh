@@ -72,7 +72,14 @@ echo "Packaging test data"
 python semantic_grasping_datagen/datagen/package_pointing_data.py \
     ${DATASET_PATH}/task_point_v2_test/matched_tasks.csv \
     ${DATASET_PATH}/observations_test \
-    ${DATASET_PATH}/${FORMAT}_data_test \
+    ${DATASET_PATH}/${FORMAT}_data_cot_test \
     --format ${FORMAT} \
     --cot \
+    --n-proc 32
+
+python semantic_grasping_datagen/datagen/package_pointing_data.py \
+    ${DATASET_PATH}/task_point_v2_test/matched_tasks.csv \
+    ${DATASET_PATH}/observations_test \
+    ${DATASET_PATH}/${FORMAT}_data_test \
+    --format ${FORMAT} \
     --n-proc 32

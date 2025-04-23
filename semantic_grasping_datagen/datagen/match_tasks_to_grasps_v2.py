@@ -155,6 +155,9 @@ def submit_matching_job(obs_dir: str, task_json_path: str, out_dir: str, openai:
 
     queries = []
     for category, candidate_grasps in candidate_grasp_library.items():
+        if category not in annotated_grasp_library:
+            print(f"Skipping category {category} because it has no annotated grasp descriptions")
+            continue
         for object_id, annotated_grasps in annotated_grasp_library[category].items():
             for candidate_grasp in candidate_grasps:
                 queries.append(create_query(category, object_id, candidate_grasp, annotated_grasps))
