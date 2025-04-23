@@ -2,6 +2,7 @@ gantry run --budget ai2/prior -w ai2/abhayd \
     --weka prior-default:/weka/prior \
     --env-secret AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID \
     --env-secret AWS_SECRET_ACCESS_KEY=AWS_ACCESS_KEY \
+    --env-secret OPENAI_API_KEY=OPENAI_API_KEY \
     --gpus 1 \
     --beaker-image ai2/cuda11.8-ubuntu20.04 \
     --priority high \
