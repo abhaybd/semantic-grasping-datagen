@@ -29,7 +29,6 @@ python semantic_grasping_datagen/datagen/match_tasks_to_grasps_v2.py \
     ${TASKS_JSON} \
     ${DATASET_PATH}/observations \
     ${DATASET_PATH}/task_point_v2 \
-    --n-proc 32 \
     --submit \
     --retrieve
 
@@ -66,7 +65,6 @@ python semantic_grasping_datagen/datagen/match_tasks_to_grasps_v2.py \
     ${TASKS_JSON} \
     ${DATASET_PATH}/observations_test \
     ${DATASET_PATH}/task_point_v2_test \
-    --n-proc 32 \
     --submit \
     --retrieve
 
