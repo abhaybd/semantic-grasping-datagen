@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import setup, find_namespace_packages
 
 # Read requirements from requirements.txt
 def read_requirements(filename="requirements.txt"):
@@ -16,7 +16,7 @@ setup(
     version="0.1.0",
     description="Data generation tools for semantic grasping",
     author="Abhay Deshpande",
-    packages=find_packages(),
+    packages=["semantic_grasping_datagen"] + find_namespace_packages(include=["semantic_grasping_datagen.*"]),
     python_requires=">=3.8",
     install_requires=read_requirements(),
     include_package_data=True,
