@@ -44,7 +44,7 @@ class TaskGraspScanLibrary:
     def __init__(self, tg_dir: str):
         assert os.path.isdir(tg_dir), "TaskGrasp directory does not exist"
         self.tg_dir = tg_dir
-        self.rgb_paths = sorted(glob.glob(os.path.join(tg_dir, "*", "[0-9]_color.png")))
+        self.rgb_paths = sorted(glob.glob(os.path.join(tg_dir, "**", "[0-9]_color.png"), recursive=True))
 
     def __len__(self):
         return len(self.rgb_paths)
@@ -52,12 +52,31 @@ class TaskGraspScanLibrary:
     def get(self, object_id: str, scan_id: int):
         for i, rgb_path in enumerate(self.rgb_paths):
             dirname = os.path.dirname(rgb_path)
-            if os.path.basename(dirname) == object_id:
-                pass
             if os.path.basename(dirname) == object_id and os.path.basename(rgb_path).split("_", 1)[0] == str(scan_id):
                 return self[i]
         raise ValueError(f"Scan {object_id}_{scan_id} not found")
-    
+
+    def get_views(self, object_id: str) -> list[int]:
+        views = []
+        for rgb_path in self.rgb_paths:
+            dirname = os.path.dirname(rgb_path)
+            if os.path.basename(dirname) == object_id:
+                views.append(int(os.path.basename(rgb_path).split("_", 1)[0]))
+        return views
+
+    def __contains__(self, item: tuple[str, int] | tuple[str, int, str]):
+        assert len(item) == 2 or len(item) == 3, "Item must be a tuple of (object_id, scan_id) or (object_id, scan_id, key)"
+        object_id, scan_id = item[:2]
+        for rgb_path in self.rgb_paths:
+            dirname = os.path.dirname(rgb_path)
+            filename = os.path.basename(rgb_path)
+            if os.path.basename(dirname) == object_id and filename.split("_", 1)[0] == str(scan_id):
+                if len(item) == 2:
+                    return True
+                key = item[2]
+                return os.path.isfile(rgb_path[:-len("_color.png")] + key)
+        return False
+
     def __getitem__(self, idx: int) -> dict[str, Any]:
         dirname = os.path.dirname(self.rgb_paths[idx])
         object_id = os.path.basename(dirname)
